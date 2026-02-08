@@ -30,15 +30,21 @@ cd pdf-renamer
 pip install -r requirements.txt
 ```
 
-3. Configure the bot:
+3. Run the setup wizard (recommended):
 ```bash
-cp config.example.env .env
+python setup.py
 ```
 
-4. Edit `.env` and add your configuration:
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-ONEDRIVE_FOLDER_PATH=/path/to/your/OneDrive/PDFs
+Or manually configure:
+```bash
+cp config.example.env .env
+# Edit .env and add your configuration
+```
+
+4. (Optional) Try the demo:
+```bash
+pip install reportlab  # Only needed for demo
+python demo.py
 ```
 
 ## Usage
@@ -89,6 +95,9 @@ pdf-renamer/
 ├── pdf_extractor.py      # PDF text extraction module
 ├── ai_renamer.py         # AI-powered naming module
 ├── folder_monitor.py     # OneDrive folder monitoring module
+├── setup.py             # Interactive setup wizard
+├── demo.py              # Demo script with sample PDFs
+├── test_basic.py        # Basic functionality tests
 ├── requirements.txt      # Python dependencies
 ├── config.example.env    # Example configuration
 ├── .gitignore           # Git ignore rules
