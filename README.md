@@ -1,11 +1,11 @@
 # PDF Renamer Bot 🤖📄
 
-An AI-powered bot that automatically detects new PDF files in your OneDrive folder and renames them intelligently based on their content using OpenAI's GPT.
+An AI-powered bot that automatically detects new PDF files in your OneDrive folder and renames them intelligently based on their content using Anthropic's Claude.
 
 ## Features
 
 - 🔍 **Automatic Detection**: Monitors your OneDrive folder for new PDF files
-- 🧠 **AI-Powered Naming**: Uses OpenAI GPT to generate descriptive filenames based on PDF content
+- 🧠 **AI-Powered Naming**: Uses Anthropic Claude to generate descriptive filenames based on PDF content
 - 📝 **Smart Text Extraction**: Extracts and analyzes text from PDF documents
 - 🔄 **Real-time Monitoring**: Continuously watches for new files with debouncing to ensure files are fully written
 - ⚙️ **Configurable**: Easy configuration through environment variables
@@ -14,7 +14,7 @@ An AI-powered bot that automatically detects new PDF files in your OneDrive fold
 ## Prerequisites
 
 - Python 3.8 or higher
-- OpenAI API key
+- Anthropic API key
 - OneDrive folder (or any local folder to monitor)
 
 ## Installation
@@ -65,7 +65,7 @@ To stop the bot, press `Ctrl+C`.
 
 1. **Detection**: The bot monitors your specified folder using filesystem events
 2. **Extraction**: When a new PDF is detected, it extracts text content from the first 10 pages
-3. **AI Analysis**: The extracted text is sent to OpenAI's GPT model to generate a descriptive filename
+3. **AI Analysis**: The extracted text is sent to Anthropic's Claude model to generate a descriptive filename
 4. **Renaming**: The PDF is renamed with the AI-generated name, handling duplicates automatically
 
 ## Configuration Options
@@ -74,7 +74,7 @@ Edit your `.env` file to customize behavior:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key (required) | - |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key (required) | - |
 | `ONEDRIVE_FOLDER_PATH` | Path to folder to monitor (required) | - |
 | `AI_NAMING_PROMPT` | Custom prompt for AI naming | Built-in prompt |
 | `MAX_FILENAME_LENGTH` | Maximum filename length | 100 |
@@ -106,16 +106,16 @@ pdf-renamer/
 
 ## Dependencies
 
-- `pypdf2` - PDF text extraction
-- `openai` - OpenAI API client
+- `PyPDF2` - PDF text extraction
+- `anthropic` - Anthropic Claude API client
 - `watchdog` - Filesystem monitoring
 - `python-dotenv` - Environment variable management
 - `requests` - HTTP client
 
 ## Troubleshooting
 
-**Issue**: "OpenAI API key not provided"
-- **Solution**: Make sure you've created a `.env` file and added your `OPENAI_API_KEY`
+**Issue**: "Anthropic API key not provided"
+- **Solution**: Make sure you've created a `.env` file and added your `ANTHROPIC_API_KEY`
 
 **Issue**: "Folder does not exist"
 - **Solution**: Verify the `ONEDRIVE_FOLDER_PATH` in your `.env` file points to a valid directory
@@ -126,8 +126,8 @@ pdf-renamer/
 ## Security Notes
 
 - Never commit your `.env` file with API keys
-- Keep your OpenAI API key secure
-- Monitor your OpenAI API usage to avoid unexpected charges
+- Keep your Anthropic API key secure
+- Monitor your Anthropic API usage to avoid unexpected charges
 
 ## Contributing
 
@@ -139,6 +139,6 @@ MIT License - feel free to use this project for personal or commercial purposes.
 
 ## Acknowledgments
 
-- OpenAI for the GPT API
+- Anthropic for the Claude API
 - PyPDF2 for PDF processing
 - Watchdog for filesystem monitoring

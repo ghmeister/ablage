@@ -27,10 +27,10 @@ def main():
     
     print("\nLet's configure your PDF Renamer Bot.\n")
     
-    # Get OpenAI API key
-    print("1. OpenAI API Key")
-    print("   Get your API key from: https://platform.openai.com/api-keys")
-    api_key = input("   Enter your OpenAI API key: ").strip()
+    # Get Anthropic API key
+    print("1. Anthropic API Key")
+    print("   Get your API key from: https://console.anthropic.com/")
+    api_key = input("   Enter your Anthropic API key: ").strip()
     
     if not api_key:
         print("❌ API key is required!")
@@ -69,8 +69,8 @@ def main():
     max_length = input("   Max filename length [100]: ").strip() or "100"
     
     # Write .env file
-    env_content = f"""# OpenAI API Configuration
-OPENAI_API_KEY={api_key}
+    env_content = f"""# Anthropic API Configuration
+ANTHROPIC_API_KEY={api_key}
 
 # OneDrive Folder Path to Monitor
 ONEDRIVE_FOLDER_PATH={folder_path}

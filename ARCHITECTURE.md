@@ -11,7 +11,7 @@
        ┌───────▼───────┐ ┌──▼────────┐ ┌───▼──────────────┐
        │ Folder Monitor│ │   PDF     │ │   AI Renamer     │
        │               │ │ Extractor │ │                  │
-       │ (watchdog)    │ │ (PyPDF2)  │ │ (OpenAI GPT)     │
+       │ (watchdog)    │ │ (PyPDF2)  │ │ (Claude/Anthropic)│
        └───────┬───────┘ └──┬────────┘ └───┬──────────────┘
                │            │               │
        ┌───────▼────────────▼───────────────▼──────────────┐
@@ -24,8 +24,8 @@
 
 1. **Monitor** → Folder Monitor detects new PDF file
 2. **Extract** → PDF Extractor reads text content (first 10 pages)
-3. **Analyze** → AI Renamer sends content to OpenAI GPT
-4. **Generate** → GPT generates intelligent filename
+3. **Analyze** → AI Renamer sends content to Anthropic Claude
+4. **Generate** → Claude generates intelligent filename
 5. **Rename** → Bot renames the file with sanitized name
 
 ## Component Details
@@ -43,7 +43,7 @@
 - Handles extraction errors gracefully
 
 ### AI Renamer (ai_renamer.py)
-- Integrates with OpenAI API (gpt-3.5-turbo)
+- Integrates with Anthropic API (Claude 3.5 Sonnet)
 - Truncates content to 3000 chars to manage API costs
 - Sanitizes filenames for filesystem compatibility
 - Enforces length limits (default: 100 chars)
@@ -60,7 +60,7 @@
 All configuration is managed through environment variables in `.env`:
 
 ```
-OPENAI_API_KEY           → Required: Your OpenAI API key
+ANTHROPIC_API_KEY         → Required: Your Anthropic API key
 ONEDRIVE_FOLDER_PATH     → Required: Folder to monitor
 MAX_FILENAME_LENGTH      → Optional: Max filename chars (default: 100)
 AI_NAMING_PROMPT         → Optional: Custom AI prompt

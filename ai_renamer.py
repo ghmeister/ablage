@@ -1,10 +1,10 @@
 """
-AI-powered naming module using OpenAI API.
+AI-powered naming module using Anthropic Claude API.
 Generates intelligent filenames based on PDF content.
 """
 import os
 from typing import Optional
-from openai import OpenAI
+from anthropic import Anthropic
 
 
 class AIRenamer:
@@ -15,14 +15,14 @@ class AIRenamer:
         Initialize AI renamer.
         
         Args:
-            api_key: OpenAI API key (if not provided, reads from environment)
+            api_key: Anthropic API key (if not provided, reads from environment)
             custom_prompt: Custom prompt template for naming
         """
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
         if not self.api_key:
-            raise ValueError("OpenAI API key not provided")
+            raise ValueError("Anthropic API key not provided")
         
-        self.client = OpenAI(api_key=self.api_key)
+        self.client = Anthropic(api_key=self.api_key)
         self.custom_prompt = custom_prompt or os.getenv('AI_NAMING_PROMPT')
         self.max_filename_length = int(os.getenv('MAX_FILENAME_LENGTH', '100'))
     
@@ -67,17 +67,17 @@ PDF Content:
 Respond with ONLY the suggested filename, nothing else."""
         
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+            response = self.client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=200,
+                temperature=0.7,
+                system="You are a helpful assistant that generates concise, descriptive filenames based on document content.",
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that generates concise, descriptive filenames based on document content."},
                     {"role": "user", "content": prompt}
-                ],
-                max_tokens=100,
-                temperature=0.7
+                ]
             )
             
-            suggested_name = response.choices[0].message.content.strip()
+            suggested_name = response.content[0].text.strip()
             
             # Clean up the suggested name
             suggested_name = self._sanitize_filename(suggested_name)
