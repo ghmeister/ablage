@@ -9,7 +9,6 @@ from typing import Callable, Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
-
 class PDFHandler(FileSystemEventHandler):
     """Handles PDF file system events."""
     
@@ -93,7 +92,8 @@ class OneDriveFolderMonitor:
     def start(self):
         """Start monitoring the folder."""
         print(f"Starting to monitor folder: {self.folder_path}")
-        self.observer.schedule(self.event_handler, str(self.folder_path), recursive=False)
+        recursive = os.getenv("MONITOR_RECURSIVE", "false").lower() == "true"
+        self.observer.schedule(self.event_handler, str(self.folder_path), recursive=recursive)
         self.observer.start()
         
         print("Monitoring started. Press Ctrl+C to stop.")

@@ -1,0 +1,273 @@
+# PDF Classification Rules
+# Rules are evaluated top-to-bottom; the first matching rule wins.
+# A rule matches if ANY of the following are true:
+#   - The AI-determined document_type is in the rule's document_types list
+#   - The AI-determined company (case-insensitive partial match) is in the companies list
+#   - Any keyword from the AI's keyword list appears in the rule's keywords list (case-insensitive)
+#
+# Unmatched files are moved to the unmatched_folder below (with year subfolder).
+
+unmatched_folder: "Dokumente/Misc"
+
+rules:
+
+  # --- Versicherung ---
+  # Must come BEFORE Rechnungen so that Prämienrechnungen from insurers
+  # are correctly routed here rather than to Rechnungen.
+  - name: "Versicherung"
+    match:
+      document_types:
+        - "insurance"
+      companies:
+        - "Allianz"
+        - "Mobiliar"
+        - "Skandia"
+        - "KPT"
+        - "Zürich Versicherung"
+        - "Zurich Insurance"
+        - "GVB"          # Gebäudeversicherung Bern
+        - "CSS"
+        - "Swica"
+        - "Helsana"
+        - "Concordia"
+        - "Sanitas"
+        - "AXA"
+        - "Helvetia"
+        - "Generali"
+        - "SUVA"
+        - "Sympany"
+        - "Visana"
+        - "ÖKK"
+      keywords:
+        - "prämienrechnung"
+        - "police"
+        - "polizze"
+        - "versicherungsschein"
+        - "avb"                       # Allgemeine Versicherungsbedingungen
+        - "unfallmeldung"
+        - "unfallschein"
+        - "deckung"
+        - "versicherungsschutz"
+        - "statusreport"              # e.g. Skandia pension status reports
+        - "nachtrag versicherungsschein"
+        - "versicherungsnachweis"
+        - "versicherungsausweis"
+    destination:
+      folder: "Versicherung"
+      subfolder: "year"
+
+  # --- Steuer ---
+  # Must come BEFORE Rechnungen so that tax invoices (Steuerrechnung) and
+  # tax certificates from insurers (Steuerbescheinigung Allianz) go here.
+  - name: "Steuer"
+    match:
+      document_types:
+        - "tax"
+        - "salary_certificate"
+        - "pension"
+      companies:
+        - "Steuerverwaltung"
+        - "Kantonales Steueramt"
+        - "Steueramt"
+        - "ESTV"                      # Eidgenössische Steuerverwaltung
+        - "Finanzamt"
+      keywords:
+        - "veranlagungsverfügung"
+        - "steuervorauszahlung"
+        - "steuerabrechnung"
+        - "steuererklärung"
+        - "steuerrechnung"
+        - "kontoauszug bundessteuer"
+        - "direkte bundessteuer"
+        - "quellensteuer"
+        - "lohnausweis"
+        - "säule 3a"
+        - "3a bescheinigung"
+        - "steuerbescheinigung"       # e.g. Steuerbescheinigung Allianz
+        - "liegenschaftssteuer"
+        - "eigenmietwert"
+        - "grundstück amtlicher wert"
+        - "vermögensverzeichnis"
+        - "spendenbescheinigung"
+        - "bvg austrittsleistung"
+        - "austrittsleistung"         # BVG pension fund transfers
+        - "previs"                    # Berner Pensionskasse / previs
+    destination:
+      folder: "Steuer"
+      subfolder: "year"
+
+  # --- Rechnungen ---
+  # Generic invoices, bills, and receipts not caught by Versicherung or Steuer above.
+  # Includes medical bills (Rechnung Zahnarzt, Rechnung Hausarzt) — medical REPORTS
+  # go to Dokumente/Arzt instead.
+  - name: "Rechnungen"
+    match:
+      document_types:
+        - "invoice"
+        - "receipt"
+        - "bill"
+      keywords:
+        - "rechnung"
+        - "invoice"
+        - "faktura"
+        - "quittung"
+        - "jahresrechnung"
+        - "abrechnung"
+        - "zahlungsaufforderung"
+        - "betrag fällig"
+        - "zu zahlen"
+        - "netto"
+        - "brutto"
+        - "mehrwertsteuer"
+        - "mwst"
+        - "gesamtbetrag"
+    destination:
+      folder: "Rechnungen"
+      subfolder: "year"
+
+  # --- Dokumente/Arzt ---
+  # Medical REPORTS and diagnoses only. Medical BILLS go to Rechnungen.
+  - name: "Arzt"
+    match:
+      document_types:
+        - "medical_report"
+      keywords:
+        - "befund"
+        - "arztbericht"
+        - "diagnose"
+        - "laborblatt"
+        - "laborwerte"
+        - "allergietest"
+        - "lungenbefund"
+        - "impfausweis"
+        - "röntgen"
+        - "pathologie"
+        - "therapiebericht"
+        - "untersuchungsbericht"
+    destination:
+      folder: "Dokumente/Arzt"
+      subfolder: "year"
+
+  # --- Dokumente/Kontoauszüge ---
+  - name: "Kontoauszüge"
+    match:
+      document_types:
+        - "bank_statement"
+      companies:
+        - "UBS"
+        - "PostFinance"
+        - "Raiffeisen"
+        - "Kantonalbank"
+        - "ZKB"
+        - "Migros Bank"
+        - "Cler"
+        - "BCGE"
+        - "BCV"
+        - "BKB"
+        - "Neon"
+        - "Revolut"
+      keywords:
+        - "kontoauszug"
+        - "depotauszug"
+        - "kontoübersicht"
+        - "saldoauszug"
+        - "depotbewertung"
+    destination:
+      folder: "Dokumente/Kontoauszüge"
+      subfolder: "year"
+
+  # --- Dokumente/Verträge ---
+  - name: "Verträge"
+    match:
+      document_types:
+        - "contract"
+      keywords:
+        - "arbeitsvertrag"
+        - "mietvertrag"
+        - "produktvereinbarung hypothek"
+        - "hypothek"
+        - "darlehensvertrag"
+        - "dienstleistungsvertrag"
+        - "abonnementsvertrag"
+    destination:
+      folder: "Dokumente/Verträge"
+      subfolder: "year"
+
+  # --- Dokumente/Garantienachweise ---
+  - name: "Garantienachweise"
+    match:
+      document_types:
+        - "warranty"
+      keywords:
+        - "garantie"
+        - "garantieschein"
+        - "garantienachweis"
+        - "gewährleistung"
+        - "warranty"
+    destination:
+      folder: "Dokumente/Garantienachweise"
+      subfolder: "year"
+
+  # --- Dokumente/Ausweise ---
+  - name: "Ausweise"
+    match:
+      document_types:
+        - "id_document"
+      keywords:
+        - "reisepass"
+        - "ausländerausweis"
+        - "identitätskarte"
+        - "einbürgerungsurkunde"
+        - "führerausweis"
+        - "lernfahrausweis"
+        - "niederlassungsbewilligung"
+    destination:
+      folder: "Dokumente/Ausweise"
+      subfolder: "year"
+
+  # --- Dokumente/Zeugnisse ---
+  # Diplomas, school reports, work references, sports certificates, etc.
+  - name: "Zeugnisse"
+    match:
+      document_types:
+        - "certificate"
+      keywords:
+        - "schulzeugnis"
+        - "arbeitszeugnis"
+        - "ausbildungsbestätigung"
+        - "zertifikat"
+        - "diplom"
+        - "tauchzertifikat"
+        - "tauchattest"
+        - "bescheinigung ausbildung"
+    destination:
+      folder: "Dokumente/Zeugnisse"
+      subfolder: "year"
+
+  # --- Dokumente/Offerten ---
+  - name: "Offerten"
+    match:
+      document_types:
+        - "quote"
+      keywords:
+        - "offerte"
+        - "angebot"
+        - "kostenvoranschlag"
+        - "quotation"
+    destination:
+      folder: "Dokumente/Offerten"
+      subfolder: "year"
+
+  # --- Dokumente/Briefe ---
+  # Low priority — only catches explicitly identified letters not matched above.
+  - name: "Briefe"
+    match:
+      document_types:
+        - "letter"
+      keywords:
+        - "sehr geehrte"
+        - "mit freundlichen grüssen"
+        - "freundliche grüsse"
+    destination:
+      folder: "Dokumente/Briefe"
+      subfolder: "year"

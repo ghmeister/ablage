@@ -63,18 +63,55 @@ def main():
             print("Please create the folder manually and run setup again.")
             sys.exit(1)
     
+    # Output / classification settings
+    print("\n3. Folder Classification (optional — press Enter to skip)")
+    print("   If configured, renamed PDFs will be moved to an organized archive.")
+    print("   Example: C:\\Users\\yourname\\OneDrive\\Scanbot\\Ablage")
+
+    output_base = input("   Enter output base folder path (or leave blank to skip): ").strip()
+
+    monitor_recursive = "false"
+    if output_base:
+        if not Path(output_base).exists():
+            print(f"\n   Warning: Output folder does not exist: {output_base}")
+            response = input("   Do you want to create it? (y/n): ").strip().lower()
+            if response == 'y':
+                try:
+                    Path(output_base).mkdir(parents=True, exist_ok=True)
+                    print(f"   Created folder: {output_base}")
+                except Exception as e:
+                    print(f"   Failed to create folder: {e}. Skipping.")
+                    output_base = ""
+
+        if output_base:
+            rec = input("   Watch subfolders of the monitored path too? (y/n) [y]: ").strip().lower()
+            monitor_recursive = "false" if rec == "n" else "true"
+
     # Optional settings
-    print("\n3. Optional Settings (press Enter to use defaults)")
-    
+    print("\n4. Optional Settings (press Enter to use defaults)")
+
     max_length = input("   Max filename length [100]: ").strip() or "100"
-    
-    # Write .env file
+
+    # Build .env content
+    classification_block = ""
+    if output_base:
+        classification_block = f"""
+# Output archive folder (where classified PDFs are moved to)
+OUTPUT_BASE_FOLDER={output_base}
+
+# Path to classification rules YAML (relative to project folder or absolute)
+CLASSIFICATION_RULES_FILE=classification_rules.yaml
+
+# Watch subdirectories of ONEDRIVE_FOLDER_PATH as well
+MONITOR_RECURSIVE={monitor_recursive}
+"""
+
     env_content = f"""# Anthropic API Configuration
 ANTHROPIC_API_KEY={api_key}
 
-# OneDrive Folder Path to Monitor
+# OneDrive Folder Path to Monitor (drop zone for new PDFs)
 ONEDRIVE_FOLDER_PATH={folder_path}
-
+{classification_block}
 # Optional: Maximum filename length
 MAX_FILENAME_LENGTH={max_length}
 
@@ -102,10 +139,10 @@ To start the bot:
     python pdf_renamer_bot.py
 
 The bot will:
-1. Monitor your OneDrive folder for new PDFs
-2. Automatically extract text from each PDF
-3. Use AI to generate a descriptive filename
-4. Rename the file automatically
+1. Monitor your folder for new PDFs
+2. Extract text from each PDF
+3. Use AI to generate a descriptive filename and classify the document
+4. Move the PDF to the correct archive subfolder (e.g. Rechnungen/2026/)
 
 Press Ctrl+C to stop the bot at any time.
 
