@@ -186,9 +186,9 @@ Respond with ONLY the suggested filename, nothing else."""
 
     def _fallback_metadata(self, original_filename: str) -> dict:
         """Return neutral metadata using generate_filename() for the filename."""
-        filename = self.generate_filename("", original_filename) or original_filename
+        filename = self.generate_filename("", original_filename) or self._sanitize_filename(original_filename)
         return {
-            "filename": filename,
+            "filename": filename or "unnamed",
             "document_type": "other",
             "date": None,
             "company": None,
