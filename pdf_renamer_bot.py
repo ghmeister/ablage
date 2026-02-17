@@ -27,7 +27,7 @@ class PDFRenamerBot:
             self.ai_renamer = AIRenamer()
         except ValueError as e:
             print(f"Error initializing AI renamer: {e}")
-            print("Please set your ANTHROPIC_API_KEY in a .env file")
+            print("Please set your OPENAI_API_KEY in a .env file")
             sys.exit(1)
 
         self.folder_path = os.getenv('ONEDRIVE_FOLDER_PATH')
