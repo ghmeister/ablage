@@ -96,9 +96,10 @@ class PDFRenamerBot:
         if self.classifier:
             try:
                 final_path = self.classifier.move_file(Path(pdf_path), new_filename, metadata)
-                folder = self.classifier.classify(metadata)
+                folder, matched_rule = self.classifier.classify(metadata)
                 year = self.classifier._get_year(metadata)
-                print(f"\nFiled to: {folder}/{year}/{final_path.name}")
+                print(f"\nFiled to : {folder}/{year}/{final_path.name}")
+                print(f"Rule     : {matched_rule}")
             except Exception as e:
                 print(f"Error moving file: {e}. Falling back to in-place rename.")
                 self._rename_in_place(pdf_path, new_filename)

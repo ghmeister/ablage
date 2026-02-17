@@ -38,6 +38,7 @@ ENV/
 
 # Logs
 *.log
+move_log.json
 
 # OS
 .DS_Store
