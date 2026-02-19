@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+    pdf-renamer:
+        image: ghcr.io/minenmaster/pdf-renamer:latest
+        restart: unless-stopped
+        # Supply secrets/variables via Portainer UI or secrets.
+        # These defaults are here for reference; override in Portainer.
+        environment:
+            - OPENAI_API_KEY=replace-me
+            - ONEDRIVE_FOLDER_PATH=/data/input
+            - OUTPUT_BASE_FOLDER=/data/output
+            - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
+            - MAX_FILENAME_LENGTH=100
+        volumes:
+            # Host folders mounted into the container
+            - ./data/input:/data/input
+            - ./data/output:/data/output
+            # Optional: custom classification rules
+            # - ./classification_rules.yaml:/app/classification_rules.yaml:ro
+        # Uncomment to set timezone if needed
+        # environment:
+        #   - TZ=Europe/Zurich

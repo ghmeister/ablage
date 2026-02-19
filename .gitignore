@@ -47,3 +47,7 @@ Thumbs.db
 # Test files
 test_pdfs/
 *.pdf
+
+# Python env files
+pyvenv.cfg
+Scripts/

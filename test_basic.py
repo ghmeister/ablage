@@ -50,7 +50,7 @@ except Exception as e:
 print("\nTesting AIRenamer filename sanitization...")
 try:
     # Mock initialization without API key for testing
-    os.environ['ANTHROPIC_API_KEY'] = 'test-key-for-sanitization'
+    os.environ['OPENAI_API_KEY'] = 'test-key-for-sanitization'
     renamer = AIRenamer()
     
     # Test sanitization
@@ -68,12 +68,12 @@ try:
     print("✓ Filename sanitization works")
     
     # Clean up test env var
-    del os.environ['ANTHROPIC_API_KEY']
+    del os.environ['OPENAI_API_KEY']
     
 except Exception as e:
     print(f"❌ Failed AIRenamer test: {e}")
-    if 'ANTHROPIC_API_KEY' in os.environ:
-        del os.environ['ANTHROPIC_API_KEY']
+    if 'OPENAI_API_KEY' in os.environ:
+        del os.environ['OPENAI_API_KEY']
 
 # Test OneDriveFolderMonitor with temp directory
 print("\nTesting OneDriveFolderMonitor...")
