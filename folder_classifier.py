@@ -87,7 +87,7 @@ class MoveLogger:
 class FolderClassifier:
     """Classifies documents and moves them to the correct archive folder."""
 
-    def __init__(self, rules_file: str, output_base_folder: str):
+    def __init__(self, rules_file: str, output_base_folder: str, allow_missing_base: bool = True):
         """
         Initialize the classifier.
 
@@ -95,9 +95,12 @@ class FolderClassifier:
             rules_file: Path to the YAML rules file
             output_base_folder: Root of the archive (e.g. .../Scanbot/Ablage)
         """
-        self.output_base_folder = Path(output_base_folder).resolve()
-        if not self.output_base_folder.exists():
-            raise ValueError(f"Output base folder does not exist: {output_base_folder}")
+        self.output_base_folder = Path(output_base_folder)
+        if not allow_missing_base:
+            if not self.output_base_folder.exists():
+                raise ValueError(f"Output base folder does not exist: {output_base_folder}")
+        elif not self.output_base_folder.exists():
+            print(f"Warning: output base folder does not exist locally (remote path assumed): {output_base_folder}")
 
         rules_path = Path(rules_file)
         if not rules_path.is_absolute():
@@ -201,6 +204,16 @@ class FolderClassifier:
         )
 
         return dest
+
+    def build_destination_path(self, metadata: dict) -> tuple[str, str, str]:
+        """
+        Build a relative destination path for a document (folder/year).
+
+        Returns a tuple: (relative_folder, year, matched_rule)
+        """
+        folder, matched_rule = self.classify(metadata)
+        year = self._get_year(metadata)
+        return folder, year, matched_rule
 
     # ------------------------------------------------------------------
     # Internal helpers

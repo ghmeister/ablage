@@ -1,13 +1,13 @@
 # PDF Renamer Bot 🤖📄
 
-An AI-powered bot that automatically detects new PDF files in your OneDrive folder and renames them intelligently based on their content using OpenAI's GPT-4o models.
+An AI-powered bot that watches a OneDrive drop zone via Microsoft Graph delta queries and renames PDFs intelligently based on their content using OpenAI's GPT-4o models.
 
 ## Features
 
-- 🔍 **Automatic Detection**: Monitors your OneDrive folder for new PDF files
+- 🔍 **Automatic Detection**: Polls the OneDrive folder with Graph `/delta` to detect new PDFs
 - 🧠 **AI-Powered Naming**: Uses OpenAI GPT-4o to generate descriptive filenames based on PDF content
 - 📝 **Smart Text Extraction**: Extracts and analyzes text from PDF documents
-- 🔄 **Real-time Monitoring**: Continuously watches for new files with debouncing to ensure files are fully written
+- 🔄 **Cloud-native**: No local sync client needed; downloads and processes files in-memory
 - ⚙️ **Configurable**: Easy configuration through environment variables
 - 🛡️ **Safe**: Handles duplicate names and sanitizes filenames for filesystem compatibility
 
@@ -15,7 +15,8 @@ An AI-powered bot that automatically detects new PDF files in your OneDrive fold
 
 - Python 3.8 or higher
 - OpenAI API key
-- OneDrive folder (or any local folder to monitor)
+- Microsoft Entra app registration with Graph permissions (Files.ReadWrite.All for application permissions)
+- OneDrive folder to act as the drop zone (folder driveItem ID)
 
 ## Installation
 
@@ -26,13 +27,13 @@ git clone https://github.com/MinenMaster/pdf-renamer.git
 cd pdf-renamer
 ```
 
-2. Install dependencies:
+1. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Run the setup wizard (recommended):
+1. Run the setup wizard (recommended):
 
 ```bash
 python setup.py
@@ -45,7 +46,7 @@ cp config.example.env .env
 # Edit .env and add your configuration
 ```
 
-4. (Optional) Try the demo:
+1. (Optional) Try the demo:
 
 ```bash
 pip install reportlab  # Only needed for demo
@@ -62,9 +63,9 @@ python pdf_renamer_bot.py
 
 The bot will:
 
-1. Ask if you want to process existing PDF files in the folder
-2. Start monitoring the folder for new PDFs
-3. Automatically rename any new PDF files based on their content
+1. Start a Graph `/delta` subscription against your drop-zone folder
+2. Poll for new/changed PDF files
+3. Download each PDF in-memory, analyze it, rename it, and (optionally) move it into an archive path according to your classification rules
 
 To stop the bot, press `Ctrl+C`.
 
@@ -106,21 +107,27 @@ Notes:
 
 ## How It Works
 
-1. **Detection**: The bot monitors your specified folder using filesystem events
-2. **Extraction**: When a new PDF is detected, it extracts text content from the first 10 pages
-3. **AI Analysis**: The extracted text is sent to OpenAI's GPT-4o-mini model to generate a descriptive filename
-4. **Renaming**: The PDF is renamed with the AI-generated name, handling duplicates automatically
+1. **Detection**: The bot polls Microsoft Graph `/delta` for the drop-zone folder
+2. **Extraction**: Each new PDF is downloaded to memory and the first N pages are extracted
+3. **AI Analysis**: The extracted text is sent to OpenAI's GPT-4o-mini model to generate a descriptive filename and metadata
+4. **Renaming/Move**: The file is renamed (and optionally moved) via Graph `PATCH` into your archive hierarchy
 
 ## Configuration Options
 
 Edit your `.env` file to customize behavior:
 
-| Variable               | Description                          | Default         |
-| ---------------------- | ------------------------------------ | --------------- |
-| `OPENAI_API_KEY`       | Your OpenAI API key (required)       | -               |
-| `ONEDRIVE_FOLDER_PATH` | Path to folder to monitor (required) | -               |
-| `AI_NAMING_PROMPT`     | Custom prompt for AI naming          | Built-in prompt |
-| `MAX_FILENAME_LENGTH`  | Maximum filename length              | 100             |
+| Variable                    | Description                               | Default                   |
+| --------------------------- | ----------------------------------------- | ------------------------- |
+| `OPENAI_API_KEY`            | Your OpenAI API key (required)            | -                         |
+| `TENANT_ID`                 | Microsoft Entra tenant ID (required)      | -                         |
+| `CLIENT_ID`                 | App registration client ID (required)     | -                         |
+| `CLIENT_SECRET`             | App registration client secret (required) | -                         |
+| `SOURCE_FOLDER_ID`          | OneDrive drop-zone folder driveItem ID    | -                         |
+| `OUTPUT_BASE_FOLDER`        | Archive root path in OneDrive (optional)  | -                         |
+| `CLASSIFICATION_RULES_FILE` | Path to YAML rules (optional)             | classification_rules.yaml |
+| `POLL_INTERVAL_SECONDS`     | Graph delta poll interval                 | 30                        |
+| `AI_NAMING_PROMPT`          | Custom prompt for AI naming               | Built-in prompt           |
+| `MAX_FILENAME_LENGTH`       | Maximum filename length                   | 100                       |
 
 ## Example
 
@@ -151,7 +158,7 @@ pdf-renamer/
 
 - `PyPDF2` - PDF text extraction
 - `openai` - OpenAI API client
-- `watchdog` - Filesystem monitoring
+- `msal` - Microsoft Authentication Library for token acquisition
 - `python-dotenv` - Environment variable management
 - `requests` - HTTP client
 
@@ -161,9 +168,9 @@ pdf-renamer/
 
 - **Solution**: Make sure you've created a `.env` file and added your `OPENAI_API_KEY`
 
-**Issue**: "Folder does not exist"
+**Issue**: "Missing required environment variables"
 
-- **Solution**: Verify the `ONEDRIVE_FOLDER_PATH` in your `.env` file points to a valid directory
+- **Solution**: Ensure `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET`, and `SOURCE_FOLDER_ID` are set in `.env`
 
 **Issue**: "Failed to extract text from PDF"
 

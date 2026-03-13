@@ -16,12 +16,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Default environment variables (override in compose/Portainer)
-ENV ONEDRIVE_FOLDER_PATH="/data/input" \
-    OUTPUT_BASE_FOLDER="" \
+ENV OUTPUT_BASE_FOLDER="" \
     CLASSIFICATION_RULES_FILE="/app/classification_rules.yaml" \
     MAX_FILENAME_LENGTH=100
 
-# Create mount points for host folders
-RUN mkdir -p /data/input /data/output
+# /data is the mount point for the persistent token cache volume.
+# The MSAL token cache (.token_cache.json) is written here so it
+# survives container restarts and image upgrades.
+RUN mkdir -p /data
+ENV TOKEN_CACHE_PATH=/data/.token_cache.json
 
 CMD ["python", "pdf_renamer_bot.py"]

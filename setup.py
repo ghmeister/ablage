@@ -26,92 +26,72 @@ def main():
             return
     
     print("\nLet's configure your PDF Renamer Bot.\n")
-    
+
     # Get OpenAI API key
     print("1. OpenAI API Key")
     print("   Get your API key from: https://platform.openai.com/api-keys")
     api_key = input("   Enter your OpenAI API key: ").strip()
-    
+
     if not api_key:
         print("❌ API key is required!")
         sys.exit(1)
-    
-    # Get folder path
-    print("\n2. OneDrive Folder Path")
-    print("   This is the folder where the bot will monitor for new PDFs.")
-    print("   Example: /Users/yourname/OneDrive/PDFs")
-    print("            C:\\Users\\yourname\\OneDrive\\PDFs")
-    
-    folder_path = input("   Enter folder path: ").strip()
-    
-    if not folder_path:
-        print("❌ Folder path is required!")
+
+    # Microsoft Graph (client credentials)
+    print("\n2. Microsoft Entra / Graph app")
+    tenant_id = input("   Tenant ID: ").strip()
+    client_id = input("   Client ID: ").strip()
+    client_secret = input("   Client Secret: ").strip()
+
+    if not all([tenant_id, client_id, client_secret]):
+        print("❌ Tenant ID, Client ID, and Client Secret are required!")
         sys.exit(1)
-    
-    # Validate folder exists
-    if not Path(folder_path).exists():
-        print(f"\n⚠️  Warning: Folder does not exist: {folder_path}")
-        response = input("   Do you want to create it? (y/n): ").strip().lower()
-        if response == 'y':
-            try:
-                Path(folder_path).mkdir(parents=True, exist_ok=True)
-                print(f"✓ Created folder: {folder_path}")
-            except Exception as e:
-                print(f"❌ Failed to create folder: {e}")
-                sys.exit(1)
-        else:
-            print("Please create the folder manually and run setup again.")
-            sys.exit(1)
-    
+
+    # Source folder ID
+    print("\n3. OneDrive Drop Zone")
+    print("   Provide the driveItem ID of the folder to watch (SOURCE_FOLDER_ID).")
+    print("   Tip: Use Graph Explorer → GET /me/drive/root/children to find it.")
+    source_folder_id = input("   Source folder ID: ").strip()
+    if not source_folder_id:
+        print("❌ SOURCE_FOLDER_ID is required!")
+        sys.exit(1)
+
     # Output / classification settings
-    print("\n3. Folder Classification (optional — press Enter to skip)")
-    print("   If configured, renamed PDFs will be moved to an organized archive.")
-    print("   Example: C:\\Users\\yourname\\OneDrive\\Scanbot\\Ablage")
+    print("\n4. Folder Classification (optional — press Enter to skip)")
+    print("   If configured, renamed PDFs will be moved to an organized archive inside OneDrive.")
+    print("   Example: Archive")
 
-    output_base = input("   Enter output base folder path (or leave blank to skip): ").strip()
-
-    monitor_recursive = "false"
-    if output_base:
-        if not Path(output_base).exists():
-            print(f"\n   Warning: Output folder does not exist: {output_base}")
-            response = input("   Do you want to create it? (y/n): ").strip().lower()
-            if response == 'y':
-                try:
-                    Path(output_base).mkdir(parents=True, exist_ok=True)
-                    print(f"   Created folder: {output_base}")
-                except Exception as e:
-                    print(f"   Failed to create folder: {e}. Skipping.")
-                    output_base = ""
-
-        if output_base:
-            rec = input("   Watch subfolders of the monitored path too? (y/n) [y]: ").strip().lower()
-            monitor_recursive = "false" if rec == "n" else "true"
+    output_base = input("   Enter archive root path inside OneDrive (or leave blank): ").strip()
 
     # Optional settings
-    print("\n4. Optional Settings (press Enter to use defaults)")
+    print("\n5. Optional Settings (press Enter to use defaults)")
 
+    poll_interval = input("   Graph poll interval seconds [30]: ").strip() or "30"
     max_length = input("   Max filename length [100]: ").strip() or "100"
 
-    # Build .env content
     classification_block = ""
     if output_base:
         classification_block = f"""
-# Output archive folder (where classified PDFs are moved to)
+# Archive root folder path inside OneDrive
 OUTPUT_BASE_FOLDER={output_base}
 
 # Path to classification rules YAML (relative to project folder or absolute)
 CLASSIFICATION_RULES_FILE=classification_rules.yaml
-
-# Watch subdirectories of ONEDRIVE_FOLDER_PATH as well
-MONITOR_RECURSIVE={monitor_recursive}
 """
 
     env_content = f"""# OpenAI API Configuration
 OPENAI_API_KEY={api_key}
 
-# OneDrive Folder Path to Monitor (drop zone for new PDFs)
-ONEDRIVE_FOLDER_PATH={folder_path}
+# Microsoft Graph (Client Credentials)
+TENANT_ID={tenant_id}
+CLIENT_ID={client_id}
+CLIENT_SECRET={client_secret}
+
+# OneDrive drop-zone folder to watch (drive item ID)
+SOURCE_FOLDER_ID={source_folder_id}
 {classification_block}
+# Polling interval (seconds)
+POLL_INTERVAL_SECONDS={poll_interval}
+
 # Optional: Maximum filename length
 MAX_FILENAME_LENGTH={max_length}
 

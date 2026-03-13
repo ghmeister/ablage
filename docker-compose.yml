@@ -4,20 +4,35 @@ services:
     pdf-renamer:
         image: ghcr.io/minenmaster/pdf-renamer:latest
         restart: unless-stopped
-        # Supply secrets/variables via Portainer UI or secrets.
-        # These defaults are here for reference; override in Portainer.
         environment:
             - OPENAI_API_KEY=replace-me
-            - ONEDRIVE_FOLDER_PATH=/data/input
-            - OUTPUT_BASE_FOLDER=/data/output
+            - TENANT_ID=replace-me
+            - CLIENT_ID=replace-me
+            # Authentication mode - choose ONE:
+            #
+            # Personal OneDrive (device-code / one-time login):
+            #   Leave CLIENT_SECRET and USER_ID commented out or empty.
+            #   On first run, check the logs for the login URL + code.
+            #   The token is persisted in the token_cache volume.
+            #
+            # Work/school OneDrive with M365 license (app-only, no login prompt):
+            #   Uncomment and set both CLIENT_SECRET and USER_ID.
+            #
+            # - CLIENT_SECRET=replace-me
+            # - USER_ID=user@example.com
+            - SOURCE_FOLDER_ID=replace-me
+            - OUTPUT_BASE_FOLDER=Archive
             - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
+            - POLL_INTERVAL_SECONDS=30
             - MAX_FILENAME_LENGTH=100
+            # Uncomment to set timezone
+            # - TZ=Europe/Zurich
         volumes:
-            # Host folders mounted into the container
-            - ./data/input:/data/input
-            - ./data/output:/data/output
-            # Optional: custom classification rules
+            # Persists the MSAL token cache across container restarts and upgrades.
+            # Required for personal OneDrive (device-code flow).
+            - token_cache:/data
+            # Optional: mount custom classification rules
             # - ./classification_rules.yaml:/app/classification_rules.yaml:ro
-        # Uncomment to set timezone if needed
-        # environment:
-        #   - TZ=Europe/Zurich
+
+volumes:
+    token_cache:

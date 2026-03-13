@@ -1,134 +1,79 @@
 """
-OneDrive folder monitoring module.
-Watches for new PDF files and triggers renaming.
+Cloud-native OneDrive monitoring using Microsoft Graph delta queries.
 """
-import os
+from __future__ import annotations
+
 import time
-from pathlib import Path
-from typing import Callable, Optional
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler, FileSystemEvent
+from typing import Callable, Dict
 
-class PDFHandler(FileSystemEventHandler):
-    """Handles PDF file system events."""
-    
-    def __init__(self, callback: Callable[[str], None], debounce_seconds: float = 2.0):
-        """
-        Initialize PDF handler.
-        
-        Args:
-            callback: Function to call when a new PDF is detected
-            debounce_seconds: Seconds to wait before processing (to ensure file is fully written)
-        """
-        super().__init__()
+from graph_client import GraphClient
+
+
+class OneDriveDeltaMonitor:
+    """Polls the Graph /delta endpoint for PDF changes."""
+
+    def __init__(
+        self,
+        graph: GraphClient,
+        source_folder_id: str,
+        callback: Callable[[Dict], None],
+        poll_interval: int = 30,
+        skip_existing: bool = True,
+    ) -> None:
+        self.graph = graph
+        self.source_folder_id = source_folder_id
         self.callback = callback
-        self.debounce_seconds = debounce_seconds
-        self.pending_files = {}
-    
-    def on_created(self, event: FileSystemEvent):
-        """Handle file creation event."""
-        if event.is_directory:
-            return
-        
-        file_path = event.src_path
-        if file_path.lower().endswith('.pdf'):
-            print(f"Detected new PDF: {file_path}")
-            # Store the file with timestamp for debouncing
-            self.pending_files[file_path] = time.time()
-    
-    def on_modified(self, event: FileSystemEvent):
-        """Handle file modification event."""
-        if event.is_directory:
-            return
-        
-        file_path = event.src_path
-        if file_path.lower().endswith('.pdf'):
-            # Update timestamp if file is still being written
-            if file_path in self.pending_files:
-                self.pending_files[file_path] = time.time()
-    
-    def process_pending_files(self):
-        """Process files that have finished being written."""
-        current_time = time.time()
-        files_to_process = []
-        
-        for file_path, timestamp in list(self.pending_files.items()):
-            # Check if enough time has passed since last modification
-            if current_time - timestamp >= self.debounce_seconds:
-                # Verify file still exists and is accessible
-                if os.path.exists(file_path) and os.path.isfile(file_path):
-                    files_to_process.append(file_path)
-                del self.pending_files[file_path]
-        
-        # Process each file
-        for file_path in files_to_process:
-            try:
-                self.callback(file_path)
-            except Exception as e:
-                print(f"Error processing {file_path}: {e}")
+        self.poll_interval = poll_interval
+        self.skip_existing = skip_existing
+        self.delta_link: str | None = None
 
+    # ------------------------------------------------------------------
+    # Delta handling
+    # ------------------------------------------------------------------
 
-class OneDriveFolderMonitor:
-    """Monitors a OneDrive folder for new PDF files."""
-    
-    def __init__(self, folder_path: str, callback: Callable[[str], None]):
-        """
-        Initialize folder monitor.
-        
-        Args:
-            folder_path: Path to the OneDrive folder to monitor
-            callback: Function to call when a new PDF is detected
-        """
-        self.folder_path = Path(folder_path).resolve()
-        if not self.folder_path.exists():
-            raise ValueError(f"Folder does not exist: {folder_path}")
-        if not self.folder_path.is_dir():
-            raise ValueError(f"Path is not a directory: {folder_path}")
-        
-        self.callback = callback
-        self.event_handler = PDFHandler(callback)
-        self.observer = Observer()
-    
+    def initialize(self):
+        """Advance the delta cursor to the current state (skip existing)."""
+        self.delta_link = self.graph.get_initial_delta_link(self.source_folder_id)
+        print("Initialized delta cursor (existing files skipped).")
+
+    def poll_once(self):
+        """Fetch and process one delta cycle (may span multiple pages)."""
+        if not self.delta_link:
+            self.initialize()
+
+        next_url = self.delta_link
+        latest_delta = None
+
+        while next_url:
+            page = self.graph.get_delta_page(next_url)
+            latest_delta = page.get("@odata.deltaLink") or latest_delta
+            next_url = page.get("@odata.nextLink")
+
+            for item in page.get("value", []):
+                if item.get("deleted"):
+                    continue
+                if not item.get("file"):
+                    continue
+                name = item.get("name", "").lower()
+                if not name.endswith(".pdf"):
+                    continue
+                try:
+                    self.callback(item)
+                except Exception as exc:  # pragma: no cover - runtime safeguard
+                    print(f"Error processing {item.get('name')}: {exc}")
+
+        if latest_delta:
+            self.delta_link = latest_delta
+
     def start(self):
-        """Start monitoring the folder."""
-        print(f"Starting to monitor folder: {self.folder_path}")
-        recursive = os.getenv("MONITOR_RECURSIVE", "false").lower() == "true"
-        self.observer.schedule(self.event_handler, str(self.folder_path), recursive=recursive)
-        self.observer.start()
-        
-        print("Monitoring started. Press Ctrl+C to stop.")
-        
-        try:
-            while True:
-                time.sleep(1)
-                # Process any pending files
-                self.event_handler.process_pending_files()
-        except KeyboardInterrupt:
-            self.stop()
-    
-    def stop(self):
-        """Stop monitoring the folder."""
-        print("\nStopping monitor...")
-        self.observer.stop()
-        self.observer.join()
-        print("Monitor stopped.")
-    
-    def scan_existing_files(self):
-        """Scan for existing PDF files in the folder (for initial run)."""
-        print(f"Scanning for existing PDF files in {self.folder_path}...")
-        pdf_files = list(self.folder_path.glob("*.pdf"))
-        
-        if pdf_files:
-            print(f"Found {len(pdf_files)} existing PDF file(s)")
-            for pdf_file in pdf_files:
-                print(f"  - {pdf_file.name}")
-            
-            response = input("Would you like to process existing files? (y/n): ").strip().lower()
-            if response == 'y':
-                for pdf_file in pdf_files:
-                    try:
-                        self.callback(str(pdf_file))
-                    except Exception as e:
-                        print(f"Error processing {pdf_file}: {e}")
+        """Begin polling loop."""
+        if self.skip_existing:
+            self.initialize()
         else:
-            print("No existing PDF files found.")
+            self.delta_link = f"{self.graph.drive_base}/items/{self.source_folder_id}/delta"
+
+        print(f"Polling OneDrive folder (ID={self.source_folder_id}) every {self.poll_interval}s...")
+
+        while True:
+            self.poll_once()
+            time.sleep(self.poll_interval)

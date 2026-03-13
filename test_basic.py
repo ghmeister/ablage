@@ -2,6 +2,7 @@
 """
 Basic tests for PDF Renamer Bot modules.
 """
+import io
 import os
 import sys
 import tempfile
@@ -24,7 +25,7 @@ except Exception as e:
     print("   (This is expected if OPENAI_API_KEY is not set)")
 
 try:
-    from folder_monitor import OneDriveFolderMonitor, PDFHandler
+    from folder_monitor import OneDriveDeltaMonitor
     print("✓ folder_monitor imported successfully")
 except ImportError as e:
     print(f"❌ Failed to import folder_monitor: {e}")
@@ -42,6 +43,21 @@ print("\nTesting PDFExtractor...")
 try:
     extractor = PDFExtractor(max_pages=5)
     print("✓ PDFExtractor initialized with max_pages=5")
+
+    # Minimal in-memory PDF bytes
+    try:
+        from PyPDF2 import PdfWriter
+
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        buf = io.BytesIO()
+        writer.write(buf)
+        pdf_bytes = buf.getvalue()
+        _ = extractor.get_pdf_info_from_bytes(pdf_bytes)
+        _ = extractor.extract_text_from_bytes(pdf_bytes)
+        print("✓ PDFExtractor can handle in-memory bytes")
+    except Exception as pdf_err:
+        print(f"⚠️  Skipped in-memory PDF extraction test: {pdf_err}")
 except Exception as e:
     print(f"❌ Failed to initialize PDFExtractor: {e}")
     sys.exit(1)
@@ -75,21 +91,21 @@ except Exception as e:
     if 'OPENAI_API_KEY' in os.environ:
         del os.environ['OPENAI_API_KEY']
 
-# Test OneDriveFolderMonitor with temp directory
-print("\nTesting OneDriveFolderMonitor...")
+# Test OneDriveDeltaMonitor with dummy graph client
+print("\nTesting OneDriveDeltaMonitor...")
 try:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        def dummy_callback(file_path):
-            print(f"  Callback received: {file_path}")
-        
-        monitor = OneDriveFolderMonitor(tmpdir, dummy_callback)
-        print(f"✓ OneDriveFolderMonitor initialized with folder: {tmpdir}")
-        
-        # Don't actually start monitoring, just test initialization
-        print("✓ Monitor can be initialized successfully")
-        
+    class DummyGraph:
+        def get_initial_delta_link(self, *_args, **_kwargs):
+            return "https://example.com/delta"
+
+        def get_delta_page(self, *_args, **_kwargs):
+            return {"value": [], "@odata.deltaLink": "https://example.com/delta"}
+
+    monitor = OneDriveDeltaMonitor(DummyGraph(), "fake-folder-id", lambda item: None, poll_interval=1, skip_existing=False)
+    print("✓ OneDriveDeltaMonitor initialized with dummy graph client")
+
 except Exception as e:
-    print(f"❌ Failed OneDriveFolderMonitor test: {e}")
+    print(f"❌ Failed OneDriveDeltaMonitor test: {e}")
     sys.exit(1)
 
 print("\n" + "="*60)

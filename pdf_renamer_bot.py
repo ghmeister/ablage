@@ -1,27 +1,48 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
-PDF Renamer Bot
-Main orchestrator that combines PDF extraction, AI naming, folder classification,
-and folder monitoring.
+Cloud-native PDF Renamer Bot using Microsoft Graph delta polling.
 """
+
 import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
-from pdf_extractor import PDFExtractor
+
 from ai_renamer import AIRenamer
-from folder_monitor import OneDriveFolderMonitor
 from folder_classifier import FolderClassifier
+from folder_monitor import OneDriveDeltaMonitor
+from graph_client import GraphClient
+from pdf_extractor import PDFExtractor
 
 
 class PDFRenamerBot:
-    """Main bot that orchestrates PDF detection, renaming, and filing."""
+    """Main bot that orchestrates Graph polling, AI naming, and filing."""
 
     def __init__(self):
-        """Initialize the PDF renamer bot."""
         load_dotenv()
 
-        self.pdf_extractor = PDFExtractor(max_pages=10)
+        # Required Graph config
+        tenant_id = os.getenv("TENANT_ID")
+        client_id = os.getenv("CLIENT_ID")
+        client_secret = os.getenv("CLIENT_SECRET") or None  # optional: omit for personal OneDrive
+        user_id = os.getenv("USER_ID") or None              # optional: only used for app-only mode
+        source_folder_id = os.getenv("SOURCE_FOLDER_ID")
+
+        missing = [key for key, val in {
+            "TENANT_ID": tenant_id,
+            "CLIENT_ID": client_id,
+            "SOURCE_FOLDER_ID": source_folder_id,
+        }.items() if not val]
+        if missing:
+            print(f"Missing required environment variables: {', '.join(missing)}")
+            print("Please update your .env (see config.example.env)")
+            sys.exit(1)
+
+        # Core helpers
+        self.pdf_extractor = PDFExtractor(max_pages=int(os.getenv("MAX_PAGES", "10")))
 
         try:
             self.ai_renamer = AIRenamer()
@@ -30,121 +51,110 @@ class PDFRenamerBot:
             print("Please set your OPENAI_API_KEY in a .env file")
             sys.exit(1)
 
-        self.folder_path = os.getenv('ONEDRIVE_FOLDER_PATH')
-        if not self.folder_path:
-            print("Error: ONEDRIVE_FOLDER_PATH not set in .env file")
-            print("Please copy config.example.env to .env and configure it")
-            sys.exit(1)
+        self.graph = GraphClient(tenant_id, client_id, client_secret=client_secret, user_id=user_id)
+        poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "30"))
 
-        try:
-            self.monitor = OneDriveFolderMonitor(self.folder_path, self.process_pdf)
-        except ValueError as e:
-            print(f"Error initializing folder monitor: {e}")
-            sys.exit(1)
-
-        # Optional: folder classifier (requires OUTPUT_BASE_FOLDER in .env)
+        # Optional classification → map to archive path inside OneDrive
+        self.archive_root = (os.getenv("OUTPUT_BASE_FOLDER") or "").strip("/\\")
         self.classifier = None
-        output_base = os.getenv('OUTPUT_BASE_FOLDER')
-        if output_base:
-            rules_file = os.getenv('CLASSIFICATION_RULES_FILE', 'classification_rules.yaml')
+        if self.archive_root:
+            rules_file = os.getenv("CLASSIFICATION_RULES_FILE", "classification_rules.yaml")
             try:
-                self.classifier = FolderClassifier(rules_file, output_base)
-                print(f"Folder classifier enabled → output base: {output_base}")
+                self.classifier = FolderClassifier(rules_file, self.archive_root, allow_missing_base=True)
+                print(f"Folder classifier enabled → archive root: {self.archive_root}")
             except Exception as e:
                 print(f"Warning: Could not initialize folder classifier: {e}")
-                print("Files will be renamed in-place without moving.")
+                print("Files will be renamed in-place within the source folder.")
 
-    def process_pdf(self, pdf_path: str):
-        """
-        Process a PDF file: extract text, analyze with AI, then rename and move.
+        self.monitor = OneDriveDeltaMonitor(
+            graph=self.graph,
+            source_folder_id=source_folder_id,
+            callback=self.process_graph_item,
+            poll_interval=poll_interval,
+            skip_existing=True,
+        )
 
-        Args:
-            pdf_path: Path to the PDF file
-        """
+    # ------------------------------------------------------------------
+    # Processing
+    # ------------------------------------------------------------------
+
+    def process_graph_item(self, item: dict):
+        name = item.get("name", "(unknown)")
+        item_id = item.get("id")
+        parent = item.get("parentReference", {})
+        parent_id = parent.get("id")
+        parent_path = self._normalize_drive_path(parent.get("path"))
+
         print(f"\n{'='*60}")
-        print(f"Processing: {Path(pdf_path).name}")
+        print(f"Processing: {name}")
+        print(f"Source path : {parent_path or '<unknown>'}")
         print(f"{'='*60}")
 
-        # Extract text from PDF
-        print("Extracting text from PDF...")
-        pdf_content = self.pdf_extractor.extract_text(pdf_path)
-
-        if not pdf_content:
+        # Download + extract in-memory
+        content = self.graph.download_file(item_id)
+        pdf_text = self.pdf_extractor.extract_text_from_bytes(content)
+        if not pdf_text:
             print("Failed to extract text from PDF. Skipping.")
             return
 
-        print(f"Extracted {len(pdf_content)} characters from PDF")
+        pdf_info = self.pdf_extractor.get_pdf_info_from_bytes(content)
+        print(f"Extracted {len(pdf_text)} characters from PDF ({pdf_info.get('num_pages', 'unknown')} pages)")
 
-        pdf_info = self.pdf_extractor.get_pdf_info(pdf_path)
-        print(f"PDF has {pdf_info.get('num_pages', 'unknown')} pages")
-
-        # Analyze document with AI (filename + metadata in one call)
         print("\nAnalyzing document with AI...")
-        metadata = self.ai_renamer.analyze_document(pdf_content, Path(pdf_path).stem)
+        metadata = self.ai_renamer.analyze_document(pdf_text, Path(name).stem)
 
-        new_filename = metadata["filename"]
-        doc_type = metadata["document_type"]
-        doc_date = metadata["date"]
-        company = metadata["company"]
+        new_filename = f"{metadata['filename']}.pdf"
+        print(f"Suggested filename : {new_filename}")
+        print(f"Document type      : {metadata.get('document_type')}")
+        print(f"Date               : {metadata.get('date') or 'not detected'}")
+        print(f"Company/sender     : {metadata.get('company') or 'not detected'}")
 
-        print(f"Suggested filename : {new_filename}.pdf")
-        print(f"Document type      : {doc_type}")
-        print(f"Date               : {doc_date or 'not detected'}")
-        print(f"Company/sender     : {company or 'not detected'}")
+        dest_parent_id = parent_id
+        display_path = parent_path or "<source folder>"
+        matched_rule = "n/a"
 
-        # Move (and rename) to classified destination, or fall back to in-place rename
         if self.classifier:
-            try:
-                final_path = self.classifier.move_file(Path(pdf_path), new_filename, metadata)
-                folder, matched_rule = self.classifier.classify(metadata)
-                year = self.classifier._get_year(metadata)
-                print(f"\nFiled to : {folder}/{year}/{final_path.name}")
-                print(f"Rule     : {matched_rule}")
-            except Exception as e:
-                print(f"Error moving file: {e}. Falling back to in-place rename.")
-                self._rename_in_place(pdf_path, new_filename)
-        else:
-            self._rename_in_place(pdf_path, new_filename)
+            folder, year, matched_rule = self.classifier.build_destination_path(metadata)
+            rel_path = f"{folder}/{year}" if year else folder
+            full_path = "/".join(filter(None, [self.archive_root, rel_path]))
+            dest_parent_id = self.graph.ensure_folder_path(full_path)
+            display_path = full_path
 
-    def _rename_in_place(self, pdf_path: str, new_filename: str):
-        """Rename a file within its current directory."""
-        new_path = Path(pdf_path).parent / f"{new_filename}.pdf"
+        result = self.graph.move_and_rename(item_id, new_filename, dest_parent_id)
+        final_name = result.get("name", new_filename)
+        print(f"\nMoved to  : {display_path}/{final_name}")
+        if matched_rule != "n/a":
+            print(f"Rule      : {matched_rule}")
 
-        if new_path.exists() and new_path != Path(pdf_path):
-            print(f"File already exists: {new_filename}.pdf")
-            counter = 1
-            while new_path.exists():
-                new_path = Path(pdf_path).parent / f"{new_filename}_{counter}.pdf"
-                counter += 1
-            print(f"Using: {new_path.name}")
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
-        try:
-            if new_path != Path(pdf_path):
-                os.rename(pdf_path, new_path)
-                print(f"Renamed to: {new_path.name}")
-            else:
-                print("Generated name is same as original. No rename needed.")
-        except Exception as e:
-            print(f"Error renaming file: {e}")
+    def _normalize_drive_path(self, path: str | None) -> str:
+        if not path:
+            return ""
+        # Example Graph path: /drive/root:/Drop Zone
+        return path.replace("/drive/root:", "").lstrip("/")
+
+    # ------------------------------------------------------------------
+    # Entrypoint
+    # ------------------------------------------------------------------
 
     def run(self):
-        """Run the bot."""
-        print("""
-\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
-\u2551              PDF Renamer Bot                               \u2551
-\u2551  AI-powered automatic PDF renaming and filing              \u2551
-\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d
-""")
+        print(
+            """
+╔════════════════════════════════════════════════════════════╗
+║              PDF Renamer Bot (Graph)                        ║
+║  AI-powered automatic PDF renaming and filing via Graph     ║
+╚════════════════════════════════════════════════════════════╝
+"""
+        )
 
-        print(f"Monitoring folder: {self.folder_path}\n")
-
-        self.monitor.scan_existing_files()
-        print()
+        print("Starting cloud delta polling...\n")
         self.monitor.start()
 
 
 def main():
-    """Main entry point."""
     try:
         bot = PDFRenamerBot()
         bot.run()

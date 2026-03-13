@@ -19,3 +19,4 @@ dist/
 __pycache__/
 Lib/
 Scripts/
+.token_cache.json
