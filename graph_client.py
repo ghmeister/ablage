@@ -25,7 +25,7 @@ import requests
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 # Scopes for delegated (personal / device-code) access
-_DELEGATED_SCOPES = ["Files.ReadWrite", "offline_access"]
+_DELEGATED_SCOPES = ["Files.ReadWrite"]
 
 # Where to persist the MSAL token cache between runs.
 # Override via TOKEN_CACHE_PATH env var (e.g. point to a Docker volume).
