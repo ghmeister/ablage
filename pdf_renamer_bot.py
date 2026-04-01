@@ -16,6 +16,9 @@ from folder_classifier import FolderClassifier
 from folder_monitor import OneDriveDeltaMonitor
 from graph_client import GraphClient
 from pdf_extractor import PDFExtractor
+import db as _db
+
+_MAX_TEXT_STORE = 10_000  # characters to store in DB for full-text search
 
 
 class PDFRenamerBot:
@@ -73,6 +76,8 @@ class PDFRenamerBot:
             poll_interval=poll_interval,
             skip_existing=True,
         )
+        _db.init_db()
+        print("Document DB initialized.")
 
     # ------------------------------------------------------------------
     # Processing
@@ -125,6 +130,26 @@ class PDFRenamerBot:
         print(f"\nMoved to  : {display_path}/{final_name}")
         if matched_rule != "n/a":
             print(f"Rule      : {matched_rule}")
+
+        # Write to document index
+        try:
+            _db.insert_document(
+                original_filename=name,
+                new_filename=final_name,
+                destination_folder=display_path,
+                onedrive_path=f"{display_path}/{final_name}",
+                document_type=metadata.get("document_type"),
+                document_date=metadata.get("date"),
+                sender=metadata.get("sender"),
+                recipient=metadata.get("recipient"),
+                company=metadata.get("company"),
+                keywords=", ".join(metadata.get("keywords") or []),
+                extracted_text=(pdf_text[:_MAX_TEXT_STORE] if pdf_text else None),
+                matched_rule=matched_rule,
+            )
+            print(f"Indexed   : {final_name}")
+        except Exception as e:
+            print(f"Warning   : DB write failed: {e}")
 
     # ------------------------------------------------------------------
     # Helpers

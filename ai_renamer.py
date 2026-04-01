@@ -165,7 +165,11 @@ class AIRenamer:
             f"                  Max {self.max_filename_length} chars, alphanumeric and underscores only.\n"
             f"  document_type — one value from the taxonomy above\n"
             f"  date          — document date as YYYY-MM-DD, or null if not found\n"
-            f"  company       — name of the issuing company/sender, or null\n"
+            f"  company       — short brand/company name of the ISSUER for routing (e.g. Swisscard, Allianz), or null\n"
+            f"  sender        — full name of the sender/issuer as printed on the document\n"
+            f"                  (formal company name or person name), or null\n"
+            f"  recipient     — full name of the recipient the document is addressed TO\n"
+            f"                  (person name with first+last if available, or organisation), or null\n"
             f"  keywords      — list of 3-8 lowercase German/English keywords describing the document\n\n"
             f"Original filename: {original_filename}\n\n"
             f"PDF Content:\n{truncated_content}\n\n"
@@ -175,7 +179,7 @@ class AIRenamer:
         try:
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
-                max_tokens=400,
+                max_tokens=500,
                 temperature=0.3,
                 response_format={"type": "json_object"},
                 messages=[
@@ -196,6 +200,8 @@ class AIRenamer:
                 "document_type": str(data.get("document_type") or "other").lower(),
                 "date": data.get("date"),
                 "company": data.get("company"),
+                "sender": data.get("sender"),
+                "recipient": data.get("recipient"),
                 "keywords": [str(k).lower() for k in (data.get("keywords") or [])],
             }
 
@@ -211,6 +217,8 @@ class AIRenamer:
             "document_type": "other",
             "date": None,
             "company": None,
+            "sender": None,
+            "recipient": None,
             "keywords": [],
         }
 

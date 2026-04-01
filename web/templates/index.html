@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Dokumentensuche{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Dokumentensuche</h1>
+  <span class="text-muted small">{{ total }} Dokument{% if total != 1 %}e{% endif %}</span>
+</div>
+
+{# ── Search / Filter Form ─────────────────────────────────────────── #}
+<form method="get" action="/" class="card card-body mb-4 bg-white shadow-sm">
+  <div class="row g-2 align-items-end">
+
+    <div class="col-12 col-md-4">
+      <label class="form-label fw-semibold small mb-1">Volltextsuche</label>
+      <input type="text" name="q" value="{{ query }}" class="form-control"
+             placeholder="Stichwort, Firma, Inhalt …" autofocus>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <label class="form-label fw-semibold small mb-1">Dokumenttyp</label>
+      <select name="type" class="form-select">
+        <option value="">Alle Typen</option>
+        {% for t in doc_types %}
+        <option value="{{ t }}" {% if doc_type == t %}selected{% endif %}>
+          {{ t | type_label }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-6 col-md-1">
+      <label class="form-label fw-semibold small mb-1">Jahr</label>
+      <select name="year" class="form-select">
+        <option value="">Alle</option>
+        {% for y in years %}
+        <option value="{{ y }}" {% if year == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <label class="form-label fw-semibold small mb-1">Absender</label>
+      <select name="sender" class="form-select">
+        <option value="">Alle Absender</option>
+        {% for s in senders %}
+        <option value="{{ s }}" {% if sender == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-12 col-md-2 d-flex gap-2 align-items-end">
+      <button type="submit" class="btn btn-primary flex-grow-1">Suchen</button>
+      {% if query or doc_type or year or sender %}
+      <a href="/" class="btn btn-outline-secondary" title="Filter zurücksetzen">✕</a>
+      {% endif %}
+    </div>
+
+  </div>
+</form>
+
+{# ── Active filters summary ──────────────────────────────────────── #}
+{% if query or doc_type or year or sender %}
+<p class="small text-muted mb-2">
+  Filter:
+  {% if query %}<strong>Suche:</strong> {{ query }}{% endif %}
+  {% if doc_type %} &nbsp;·&nbsp; <strong>Typ:</strong> {{ doc_type | type_label }}{% endif %}
+  {% if year %} &nbsp;·&nbsp; <strong>Jahr:</strong> {{ year }}{% endif %}
+  {% if sender %} &nbsp;·&nbsp; <strong>Absender:</strong> {{ sender }}{% endif %}
+  &nbsp;—&nbsp; {{ total }} Treffer
+</p>
+{% endif %}
+
+{# ── Results ─────────────────────────────────────────────────────── #}
+{% if rows %}
+<div class="table-responsive shadow-sm rounded">
+  <table class="table table-hover table-sm bg-white mb-0 align-middle">
+    {%- macro sort_th(label, col, width="") %}
+      {%- set active = (sort_by == col) %}
+      {%- set next_order = "asc" if (active and sort_order == "desc") else "desc" %}
+      <th {% if width %}style="width:{{ width }}"{% endif %}>
+        <a href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&sort={{ col }}&order={{ next_order }}"
+           class="text-white text-decoration-none d-block">
+          {{ label }}
+          {%- if active %} {{ "▲" if sort_order == "asc" else "▼" }}{% endif %}
+        </a>
+      </th>
+    {%- endmacro %}
+    <thead class="table-dark">
+      <tr>
+        {{ sort_th("Datum",     "document_date",      "100px") }}
+        {{ sort_th("Dateiname", "new_filename") }}
+        {{ sort_th("Typ",       "document_type",      "110px") }}
+        {{ sort_th("Absender",  "sender") }}
+        {{ sort_th("Empfänger", "recipient") }}
+        {{ sort_th("Ordner",    "destination_folder") }}
+        {{ sort_th("Erfasst",   "scan_timestamp",     "90px") }}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr onclick="window.location='/document/{{ row.id }}'">
+        <td class="text-nowrap small">{{ row.document_date or '–' }}</td>
+        <td class="filename-cell" title="{{ row.new_filename }}">
+          <a href="/document/{{ row.id }}" class="text-decoration-none fw-semibold text-dark"
+             onclick="event.stopPropagation()">{{ row.new_filename }}</a>
+        </td>
+        <td>
+          <span class="badge badge-type bg-{{ row.document_type | type_color }}">
+            {{ row.document_type | type_label }}
+          </span>
+        </td>
+        <td class="small">{{ row.sender or row.company or '–' }}</td>
+        <td class="small">{{ row.recipient or '–' }}</td>
+        <td class="small text-muted text-truncate" style="max-width:180px"
+            title="{{ row.destination_folder }}">{{ row.destination_folder or '–' }}</td>
+        <td class="small text-muted text-nowrap">
+          {{ row.scan_timestamp[:10] if row.scan_timestamp else '–' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ── Pagination ───────────────────────────────────────────────────── #}
+{% if total_pages > 1 %}
+<nav class="mt-3" aria-label="Seitennavigation">
+  <ul class="pagination pagination-sm justify-content-center flex-wrap mb-0">
+
+    <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+      <a class="page-link"
+         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&page={{ page - 1 }}">
+        &laquo;
+      </a>
+    </li>
+
+    {% set start_p = [1, page - 2] | max %}
+    {% set end_p   = [total_pages, page + 2] | min %}
+
+    {% if start_p > 1 %}
+    <li class="page-item disabled"><span class="page-link">…</span></li>
+    {% endif %}
+
+    {% for p in range(start_p, end_p + 1) %}
+    <li class="page-item {% if p == page %}active{% endif %}">
+      <a class="page-link"
+         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&page={{ p }}">
+        {{ p }}
+      </a>
+    </li>
+    {% endfor %}
+
+    {% if end_p < total_pages %}
+    <li class="page-item disabled"><span class="page-link">…</span></li>
+    {% endif %}
+
+    <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+      <a class="page-link"
+         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&page={{ page + 1 }}">
+        &raquo;
+      </a>
+    </li>
+
+  </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <div style="font-size:3rem">🔍</div>
+  <p class="mt-2">Keine Dokumente gefunden.</p>
+  {% if query or doc_type or year or sender %}
+  <a href="/" class="btn btn-sm btn-outline-secondary">Filter zurücksetzen</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

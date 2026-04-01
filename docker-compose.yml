@@ -25,14 +25,30 @@ services:
             - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
             - POLL_INTERVAL_SECONDS=30
             - MAX_FILENAME_LENGTH=100
+            - DB_PATH=/data/documents.db
             # Uncomment to set timezone
             # - TZ=Europe/Zurich
         volumes:
-            # Persists the MSAL token cache across container restarts and upgrades.
-            # Required for personal OneDrive (device-code flow).
-            - token_cache:/data
+            # Persists MSAL token cache and document DB across restarts.
+            - doc_data:/data
             # Optional: mount custom classification rules
             # - ./classification_rules.yaml:/app/classification_rules.yaml:ro
 
+    pdf-renamer-web:
+        image: ghcr.io/minenmaster/pdf-renamer:latest
+        restart: unless-stopped
+        command: ["python", "web/app.py"]
+        ports:
+            - "5000:5000"
+        environment:
+            - DB_PATH=/data/documents.db
+            # Optional: set ARCHIVE_ROOT to enable the "PDF öffnen" button.
+            # Mount the OneDrive archive folder and set the path here, e.g.:
+            # - ARCHIVE_ROOT=/archive
+        volumes:
+            - doc_data:/data
+            # Optional: mount OneDrive archive for PDF preview
+            # - /path/on/minipc/OneDrive/Scanbot/Ablage:/archive:ro
+
 volumes:
-    token_cache:
+    doc_data:
