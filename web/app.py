@@ -60,6 +60,20 @@ def _get_classifier():
     return _folder_classifier
 
 
+def _local_onedrive_path(onedrive_path: str) -> str:
+    """
+    Strip OUTPUT_BASE_FOLDER prefix for local file access via ARCHIVE_ROOT.
+
+    The bot stores full drive-root paths ('Scanbot/Ablage/Versicherung/2026/file.pdf')
+    but ARCHIVE_ROOT is already mounted at 'Scanbot/Ablage', so the prefix must be
+    removed before joining with ARCHIVE_ROOT.
+    """
+    archive_root = os.getenv("OUTPUT_BASE_FOLDER", "").strip("/\\")
+    if archive_root and onedrive_path.startswith(archive_root + "/"):
+        return onedrive_path[len(archive_root) + 1:]
+    return onedrive_path
+
+
 def _full_onedrive_path(onedrive_path: str) -> str:
     """
     Ensure the path is relative to the drive root, not just the archive root.
@@ -181,10 +195,11 @@ def document(doc_id: int) -> str:
     doc = db_module.get_document(doc_id)
     if doc is None:
         abort(404)
+    local_path = _local_onedrive_path(doc.get("onedrive_path") or "")
     can_open = bool(
         _ARCHIVE_ROOT is not None
-        and doc.get("onedrive_path")
-        and (_ARCHIVE_ROOT / doc["onedrive_path"]).is_file()
+        and local_path
+        and (_ARCHIVE_ROOT / local_path).is_file()
     )
     graph_enabled = bool(os.getenv("TENANT_ID") and os.getenv("CLIENT_ID"))
     return render_template(
@@ -311,7 +326,7 @@ def open_pdf(doc_id: int):
     doc = db_module.get_document(doc_id)
     if doc is None:
         abort(404)
-    pdf_path = _ARCHIVE_ROOT / doc["onedrive_path"]
+    pdf_path = _ARCHIVE_ROOT / _local_onedrive_path(doc["onedrive_path"])
     if not pdf_path.is_file():
         abort(404, f"File not found: {pdf_path}")
     return send_file(str(pdf_path), mimetype="application/pdf")
