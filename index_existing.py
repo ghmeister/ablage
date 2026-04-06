@@ -41,6 +41,12 @@ def _main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Do not write to the DB")
     parser.add_argument("--db", metavar="PATH", help="Override the DB_PATH")
     parser.add_argument("--limit", type=int, default=0, help="Stop after N documents")
+    parser.add_argument(
+        "--onedrive-prefix", metavar="PATH",
+        help="OneDrive path prefix to prepend to stored paths "
+             "(e.g. 'Scanbot/Ablage'). Falls back to OUTPUT_BASE_FOLDER env var. "
+             "Use when the archive root is not at the OneDrive drive root.",
+    )
     args = parser.parse_args()
 
     # Override DB_PATH before importing db so _get_db_path() sees the override
@@ -107,6 +113,13 @@ def _main() -> None:
         if destination_folder == ".":
             destination_folder = ""
 
+        # Prepend the OneDrive root prefix so stored paths are relative to
+        # the drive root (not just the local archive_root mount point).
+        _prefix = (args.onedrive_prefix or os.getenv("OUTPUT_BASE_FOLDER", "")).strip("/\\")
+        if _prefix:
+            onedrive_path = f"{_prefix}/{onedrive_path}"
+            destination_folder = f"{_prefix}/{destination_folder}" if destination_folder else _prefix
+
         try:
             if args.no_ai:
                 metadata = _parse_filename_metadata(new_filename)
@@ -127,11 +140,10 @@ def _main() -> None:
         keywords_str = ", ".join(metadata.get("keywords") or [])
         text_to_store = (extracted_text[:_MAX_TEXT_STORE] if extracted_text else None)
 
-        # Use file creation time as scan_timestamp (falls back to mtime on non-Windows)
-        stat = pdf_path.stat()
+        # Use st_mtime (last modified) as scan_timestamp — OneDrive preserves this
+        # as the original scan date, whereas creation time is reset on sync.
         file_ts = datetime.fromtimestamp(
-            getattr(stat, "st_birthtime", None) or stat.st_mtime,
-            tz=timezone.utc,
+            pdf_path.stat().st_mtime, tz=timezone.utc
         ).isoformat(timespec="seconds")
 
         if args.dry_run:

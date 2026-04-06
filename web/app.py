@@ -59,6 +59,21 @@ def _get_classifier():
         _folder_classifier = FolderClassifier(rules_file)
     return _folder_classifier
 
+
+def _full_onedrive_path(onedrive_path: str) -> str:
+    """
+    Ensure the path is relative to the drive root, not just the archive root.
+
+    index_existing.py stores paths relative to the archive root
+    (e.g. 'Versicherung/2016/file.pdf'), while the bot stores the full
+    path from the drive root (e.g. 'Scanbot/Ablage/Versicherung/2016/file.pdf').
+    Prepend OUTPUT_BASE_FOLDER when it is missing.
+    """
+    archive_root = os.getenv("OUTPUT_BASE_FOLDER", "").strip("/\\")
+    if archive_root and not onedrive_path.startswith(archive_root + "/"):
+        return f"{archive_root}/{onedrive_path}"
+    return onedrive_path
+
 # German labels for document types
 TYPE_LABELS: dict[str, str] = {
     "invoice": "Rechnung",
@@ -202,7 +217,7 @@ def reclassify(doc_id: int):
         return jsonify({"error": "Graph API not configured on this server"}), 503
 
     try:
-        item = graph.get_item_by_path(doc["onedrive_path"])
+        item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
         item_id = item["id"]
         current_filename = item["name"]
 
@@ -269,7 +284,7 @@ def rename_document(doc_id: int):
         return jsonify({"error": "Graph API not configured on this server"}), 503
 
     try:
-        item = graph.get_item_by_path(doc["onedrive_path"])
+        item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
         item_id = item["id"]
         parent_id = item["parentReference"]["id"]
 
