@@ -24,6 +24,7 @@ import argparse
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -126,12 +127,19 @@ def _main() -> None:
         keywords_str = ", ".join(metadata.get("keywords") or [])
         text_to_store = (extracted_text[:_MAX_TEXT_STORE] if extracted_text else None)
 
+        # Use file creation time as scan_timestamp (falls back to mtime on non-Windows)
+        stat = pdf_path.stat()
+        file_ts = datetime.fromtimestamp(
+            getattr(stat, "st_birthtime", None) or stat.st_mtime,
+            tz=timezone.utc,
+        ).isoformat(timespec="seconds")
+
         if args.dry_run:
             print(
                 f"  [dry-run] {new_filename} "
                 f"| type={metadata.get('document_type')} "
                 f"| date={metadata.get('date')} "
-                f"| sender={metadata.get('sender')}"
+                f"| created={file_ts}"
             )
         else:
             try:
@@ -148,6 +156,7 @@ def _main() -> None:
                     keywords=keywords_str,
                     extracted_text=text_to_store,
                     matched_rule="backfill",
+                    scan_timestamp=file_ts,
                 )
             except Exception as e:
                 print(f"  ERROR writing to DB for {pdf_path.name}: {e}")
