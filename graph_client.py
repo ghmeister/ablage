@@ -217,11 +217,23 @@ class GraphClient:
         return resp.content
 
     def move_and_rename(self, item_id: str, new_name: str, parent_id: str) -> dict:
-        """Move an item to parent_id and rename it atomically."""
+        """Move an item to parent_id and rename it atomically.
+
+        On a 409 nameAlreadyExists conflict, appends _2, _3, … to the stem
+        until a free slot is found (up to 99 attempts).
+        """
+        stem, dot, ext = new_name.rpartition(".")
+        ext = f"{dot}{ext}" if dot else ""
         url = f"{self.drive_base}/items/{item_id}"
-        payload = {"name": new_name, "parentReference": {"id": parent_id}}
-        resp = self.request("PATCH", url, json=payload)
-        return resp.json()
+
+        for counter in range(1, 100):
+            candidate = new_name if counter == 1 else f"{stem}_{counter}{ext}"
+            payload = {"name": candidate, "parentReference": {"id": parent_id}}
+            resp = self.request("PATCH", url, json=payload, allow_statuses={409})
+            if resp.status_code != 409:
+                return resp.json()
+
+        raise GraphAPIError(f"Could not find a free filename after 99 attempts (base: {new_name})")
 
     def get_item_by_path(self, path: str) -> dict:
         """Fetch a drive item by its path relative to the drive root."""
