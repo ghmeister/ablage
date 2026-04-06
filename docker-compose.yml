@@ -42,6 +42,13 @@ services:
             - "5000:5000"
         environment:
             - DB_PATH=/data/documents.db
+            # Required for category reclassify and file rename features:
+            - TENANT_ID=replace-me
+            - CLIENT_ID=replace-me
+            # - CLIENT_SECRET=replace-me
+            # - USER_ID=user@example.com
+            - OUTPUT_BASE_FOLDER=Archive
+            - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
             # Optional: set ARCHIVE_ROOT to enable the "PDF öffnen" button.
             # Mount the OneDrive archive folder and set the path here, e.g.:
             # - ARCHIVE_ROOT=/archive

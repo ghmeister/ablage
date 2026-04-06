@@ -9,14 +9,49 @@
   </ol>
 </nav>
 
+{# Toast notifications #}
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1100">
+  <div id="toastSuccess" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="polite">
+    <div class="d-flex">
+      <div class="toast-body" id="toastSuccessMsg">Gespeichert.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+  <div id="toastError" class="toast align-items-center text-bg-danger border-0 mt-2" role="alert" aria-live="assertive">
+    <div class="d-flex">
+      <div class="toast-body" id="toastErrorMsg">Fehler.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
-    <span class="fw-semibold text-truncate me-2" title="{{ doc.new_filename }}.pdf">
+    <span class="fw-semibold text-truncate me-2" title="{{ doc.new_filename }}.pdf" id="headerFilename">
       {{ doc.new_filename }}.pdf
     </span>
-    <span class="badge bg-{{ doc.document_type | type_color }} badge-type flex-shrink-0">
-      {{ doc.document_type | type_label }}
-    </span>
+    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      {# --- Category badge + inline editor --- #}
+      <span id="typeBadgeWrap">
+        <span class="badge bg-{{ doc.document_type | type_color }} badge-type" id="typeBadge">
+          {{ doc.document_type | type_label }}
+        </span>
+        {% if graph_enabled %}
+        <button class="btn btn-sm btn-outline-light py-0 px-1 ms-1" id="editTypeBtn" title="Kategorie ändern" style="font-size:0.75rem">✎</button>
+        {% endif %}
+      </span>
+      {% if graph_enabled %}
+      <span id="typeEditWrap" class="d-none d-flex align-items-center gap-1">
+        <select class="form-select form-select-sm" id="typeSelect" style="min-width:160px">
+          {% for key, label in type_labels.items() %}
+          <option value="{{ key }}" {% if key == doc.document_type %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-success" id="saveTypeBtn">✓</button>
+        <button class="btn btn-sm btn-outline-light" id="cancelTypeBtn">✕</button>
+      </span>
+      {% endif %}
+    </div>
   </div>
 
   <div class="card-body">
@@ -73,20 +108,33 @@
               <td class="text-break small">{{ doc.original_filename or '–' }}</td>
             </tr>
             <tr>
-              <th class="text-muted fw-normal ps-0">Neuer Dateiname</th>
-              <td class="fw-semibold small">{{ doc.new_filename or '–' }}</td>
+              <th class="text-muted fw-normal ps-0">Dateiname</th>
+              <td class="fw-semibold small">
+                {% if graph_enabled %}
+                <span id="filenameDisplay">{{ doc.new_filename or '–' }}</span>
+                <button class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1" id="editFilenameBtn" title="Umbenennen" style="font-size:0.72rem">✎</button>
+                <span id="filenameEditWrap" class="d-none">
+                  <input type="text" class="form-control form-control-sm d-inline-block mt-1"
+                         id="filenameInput" value="{{ doc.new_filename or '' }}" style="max-width:320px">
+                  <button class="btn btn-sm btn-success mt-1" id="saveFilenameBtn">✓ Speichern</button>
+                  <button class="btn btn-sm btn-outline-secondary mt-1" id="cancelFilenameBtn">✕</button>
+                </span>
+                {% else %}
+                {{ doc.new_filename or '–' }}
+                {% endif %}
+              </td>
             </tr>
             <tr>
               <th class="text-muted fw-normal ps-0">Zielordner</th>
-              <td class="small">{{ doc.destination_folder or '–' }}</td>
+              <td class="small" id="destFolderCell">{{ doc.destination_folder or '–' }}</td>
             </tr>
             <tr>
               <th class="text-muted fw-normal ps-0">OneDrive-Pfad</th>
-              <td class="text-break small text-muted">{{ doc.onedrive_path or '–' }}</td>
+              <td class="text-break small text-muted" id="onedrivePath">{{ doc.onedrive_path or '–' }}</td>
             </tr>
             <tr>
               <th class="text-muted fw-normal ps-0">Klassifizierung</th>
-              <td class="small">{{ doc.matched_rule or '–' }}</td>
+              <td class="small" id="matchedRule">{{ doc.matched_rule or '–' }}</td>
             </tr>
           </tbody>
         </table>
@@ -107,6 +155,117 @@
 <a href="/" class="btn btn-outline-secondary btn-sm">&larr; Zurück zur Suche</a>
 {% if can_open %}
 <a href="/pdf/{{ doc.id }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
+{% endif %}
+
+{% if graph_enabled %}
+<script>
+const DOC_ID = {{ doc.id }};
+const TYPE_COLORS = {{ type_colors | tojson }};
+
+function showToast(success, msg) {
+  const id = success ? 'toastSuccess' : 'toastError';
+  const msgId = success ? 'toastSuccessMsg' : 'toastErrorMsg';
+  document.getElementById(msgId).textContent = msg;
+  const el = document.getElementById(id);
+  bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
+}
+
+// ---------- Category edit ----------
+const editTypeBtn    = document.getElementById('editTypeBtn');
+const cancelTypeBtn  = document.getElementById('cancelTypeBtn');
+const saveTypeBtn    = document.getElementById('saveTypeBtn');
+const typeBadgeWrap  = document.getElementById('typeBadgeWrap');
+const typeEditWrap   = document.getElementById('typeEditWrap');
+const typeBadge      = document.getElementById('typeBadge');
+const typeSelect     = document.getElementById('typeSelect');
+
+editTypeBtn.addEventListener('click', () => {
+  typeBadgeWrap.classList.add('d-none');
+  typeEditWrap.classList.remove('d-none');
+  typeSelect.focus();
+});
+cancelTypeBtn.addEventListener('click', () => {
+  typeEditWrap.classList.add('d-none');
+  typeBadgeWrap.classList.remove('d-none');
+});
+saveTypeBtn.addEventListener('click', async () => {
+  saveTypeBtn.disabled = true;
+  saveTypeBtn.textContent = '…';
+  try {
+    const resp = await fetch(`/api/documents/${DOC_ID}/reclassify`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({document_type: typeSelect.value}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+    // Update badge
+    typeBadge.textContent = data.type_label;
+    typeBadge.className = `badge badge-type bg-${data.type_color}`;
+    // Update table cells
+    document.getElementById('destFolderCell').textContent = data.destination_folder;
+    document.getElementById('matchedRule').textContent = data.matched_rule;
+    // Update onedrive path if returned
+    typeEditWrap.classList.add('d-none');
+    typeBadgeWrap.classList.remove('d-none');
+    showToast(true, `Kategorie geändert → ${data.destination_folder}`);
+  } catch(e) {
+    showToast(false, `Fehler: ${e.message}`);
+  } finally {
+    saveTypeBtn.disabled = false;
+    saveTypeBtn.textContent = '✓';
+  }
+});
+
+// ---------- Filename edit ----------
+const editFilenameBtn   = document.getElementById('editFilenameBtn');
+const cancelFilenameBtn = document.getElementById('cancelFilenameBtn');
+const saveFilenameBtn   = document.getElementById('saveFilenameBtn');
+const filenameDisplay   = document.getElementById('filenameDisplay');
+const filenameEditWrap  = document.getElementById('filenameEditWrap');
+const filenameInput     = document.getElementById('filenameInput');
+
+editFilenameBtn.addEventListener('click', () => {
+  editFilenameBtn.classList.add('d-none');
+  filenameEditWrap.classList.remove('d-none');
+  filenameInput.focus();
+  filenameInput.select();
+});
+cancelFilenameBtn.addEventListener('click', () => {
+  filenameEditWrap.classList.add('d-none');
+  editFilenameBtn.classList.remove('d-none');
+});
+saveFilenameBtn.addEventListener('click', async () => {
+  const newName = filenameInput.value.trim();
+  if (!newName) return;
+  saveFilenameBtn.disabled = true;
+  saveFilenameBtn.textContent = '…';
+  try {
+    const resp = await fetch(`/api/documents/${DOC_ID}/rename`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({new_filename: newName}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+    filenameDisplay.textContent = data.new_filename;
+    filenameInput.value = data.new_filename;
+    document.getElementById('headerFilename').textContent = data.new_filename + '.pdf';
+    document.getElementById('headerFilename').title = data.new_filename + '.pdf';
+    document.getElementById('onedrivePath').textContent = data.onedrive_path;
+    filenameEditWrap.classList.add('d-none');
+    editFilenameBtn.classList.remove('d-none');
+    showToast(true, `Umbenannt zu ${data.new_filename}.pdf`);
+  } catch(e) {
+    showToast(false, `Fehler: ${e.message}`);
+  } finally {
+    saveFilenameBtn.disabled = false;
+    saveFilenameBtn.textContent = '✓ Speichern';
+  }
+});
+</script>
 {% endif %}
 
 {% endblock %}

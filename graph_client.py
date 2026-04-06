@@ -223,6 +223,15 @@ class GraphClient:
         resp = self.request("PATCH", url, json=payload)
         return resp.json()
 
+    def get_item_by_path(self, path: str) -> dict:
+        """Fetch a drive item by its path relative to the drive root."""
+        from urllib.parse import quote as _quote
+        cleaned = path.strip("/").replace("\\", "/")
+        encoded = "/".join(_quote(seg, safe="") for seg in cleaned.split("/"))
+        url = f"{self.drive_base}/root:/{encoded}"
+        resp = self.request("GET", url)
+        return resp.json()
+
     def ensure_folder_path(self, path: str) -> str:
         """
         Ensure a folder path exists (relative to drive root) and return its item ID.

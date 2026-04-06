@@ -66,7 +66,7 @@ class OneDriveDeltaMonitor:
             self.delta_link = latest_delta
 
     def start(self):
-        """Begin polling loop."""
+        """Begin polling loop. Transient errors are retried with exponential backoff."""
         if self.skip_existing:
             self.initialize()
         else:
@@ -74,6 +74,12 @@ class OneDriveDeltaMonitor:
 
         print(f"Polling OneDrive folder (ID={self.source_folder_id}) every {self.poll_interval}s...")
 
+        backoff = self.poll_interval
         while True:
-            self.poll_once()
-            time.sleep(self.poll_interval)
+            try:
+                self.poll_once()
+                backoff = self.poll_interval  # reset on success
+            except Exception as exc:
+                print(f"Poll error (retrying in {backoff}s): {exc}")
+                backoff = min(backoff * 2, 600)
+            time.sleep(backoff)

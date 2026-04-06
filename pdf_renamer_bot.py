@@ -63,7 +63,7 @@ class PDFRenamerBot:
         if self.archive_root:
             rules_file = os.getenv("CLASSIFICATION_RULES_FILE", "classification_rules.yaml")
             try:
-                self.classifier = FolderClassifier(rules_file, self.archive_root, allow_missing_base=True)
+                self.classifier = FolderClassifier(rules_file)
                 print(f"Folder classifier enabled → archive root: {self.archive_root}")
             except Exception as e:
                 print(f"Warning: Could not initialize folder classifier: {e}")
@@ -127,6 +127,8 @@ class PDFRenamerBot:
 
         result = self.graph.move_and_rename(item_id, new_filename, dest_parent_id)
         final_name = result.get("name", new_filename)
+        # Store stem without .pdf — the web template appends the extension
+        final_stem = final_name[:-4] if final_name.lower().endswith(".pdf") else final_name
         print(f"\nMoved to  : {display_path}/{final_name}")
         if matched_rule != "n/a":
             print(f"Rule      : {matched_rule}")
@@ -135,7 +137,7 @@ class PDFRenamerBot:
         try:
             _db.insert_document(
                 original_filename=name,
-                new_filename=final_name,
+                new_filename=final_stem,
                 destination_folder=display_path,
                 onedrive_path=f"{display_path}/{final_name}",
                 document_type=metadata.get("document_type"),

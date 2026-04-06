@@ -168,6 +168,23 @@ def get_document(doc_id: int) -> Optional[dict]:
         return dict(row) if row else None
 
 
+def update_document(doc_id: int, **fields) -> None:
+    """Update specific fields of a document record."""
+    _allowed = {
+        "new_filename", "document_type", "destination_folder",
+        "onedrive_path", "matched_rule",
+    }
+    updates = {k: v for k, v in fields.items() if k in _allowed}
+    if not updates:
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    with _conn() as conn:
+        conn.execute(
+            f"UPDATE documents SET {set_clause} WHERE id = ?",
+            list(updates.values()) + [doc_id],
+        )
+
+
 _SORTABLE_COLUMNS = {
     "document_date", "new_filename", "document_type",
     "sender", "recipient", "destination_folder", "scan_timestamp",

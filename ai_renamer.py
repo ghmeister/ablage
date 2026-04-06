@@ -1,6 +1,6 @@
 """
-AI-powered naming module using the OpenAI API.
-Generates intelligent filenames based on PDF content.
+AI-powered document analysis using the OpenAI API.
+Generates structured filenames and metadata from PDF content.
 """
 import json
 import os
@@ -9,95 +9,24 @@ from openai import OpenAI
 
 
 class AIRenamer:
-    """Uses AI to generate intelligent filenames based on PDF content."""
+    """Uses AI to analyze documents and generate structured filenames."""
 
-    def __init__(self, api_key: Optional[str] = None, custom_prompt: Optional[str] = None):
-        """
-        Initialize AI renamer.
-
-        Args:
-            api_key: OpenAI API key (if not provided, reads OPENAI_API_KEY from environment)
-            custom_prompt: Custom prompt template for naming
-        """
+    def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
 
         self.client = OpenAI(api_key=self.api_key)
-        self.custom_prompt = custom_prompt or os.getenv('AI_NAMING_PROMPT')
         self.max_filename_length = int(os.getenv('MAX_FILENAME_LENGTH', '100'))
-
-    def generate_filename(self, pdf_content: str, original_filename: str) -> Optional[str]:
-        """
-        Generate an intelligent filename based on PDF content.
-
-        Args:
-            pdf_content: Extracted text from the PDF
-            original_filename: Original filename for reference
-
-        Returns:
-            Suggested filename (without extension) or None if generation fails
-        """
-        if not pdf_content or not pdf_content.strip():
-            print("No content provided for filename generation")
-            return None
-
-        max_content_length = 3000
-        truncated_content = pdf_content[:max_content_length]
-        if len(pdf_content) > max_content_length:
-            truncated_content += "...[content truncated]"
-
-        if self.custom_prompt:
-            user_prompt = f"{self.custom_prompt}\n\nContent:\n{truncated_content}"
-        else:
-            user_prompt = (
-                f"Based on the following PDF content, suggest a concise and descriptive filename.\n"
-                f"The filename should:\n"
-                f"- Be descriptive and meaningful\n"
-                f"- Use underscores or hyphens instead of spaces\n"
-                f"- Be concise (max {self.max_filename_length} characters)\n"
-                f"- Not include the file extension\n"
-                f"- Use only alphanumeric characters, underscores, and hyphens\n\n"
-                f"Original filename: {original_filename}\n\n"
-                f"PDF Content:\n{truncated_content}\n\n"
-                f"Respond with ONLY the suggested filename, nothing else."
-            )
-
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                max_tokens=200,
-                temperature=0.7,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that generates concise, descriptive filenames based on document content."},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-
-            suggested_name = response.choices[0].message.content.strip()
-            suggested_name = self._sanitize_filename(suggested_name)
-
-            if len(suggested_name) > self.max_filename_length:
-                suggested_name = suggested_name[:self.max_filename_length]
-
-            return suggested_name
-
-        except Exception as e:
-            print(f"Error generating filename with AI: {e}")
-            return None
 
     def analyze_document(self, pdf_content: str, original_filename: str) -> dict:
         """
-        Analyze a PDF and return both a filename suggestion and document metadata
-        for folder classification, in a single API call.
-
-        Args:
-            pdf_content: Extracted text from the PDF
-            original_filename: Original filename for reference
+        Analyze a PDF and return a filename suggestion plus document metadata
+        in a single API call.
 
         Returns:
-            Dict with keys: filename, document_type, date, company, keywords.
-            On failure falls back to generate_filename() with neutral metadata.
+            Dict with keys: filename, document_type, date, company, sender,
+            recipient, keywords. Falls back to sanitized original filename on failure.
         """
         if not pdf_content or not pdf_content.strip():
             return self._fallback_metadata(original_filename)
@@ -206,14 +135,12 @@ class AIRenamer:
             }
 
         except Exception as e:
-            print(f"Error in analyze_document: {e}. Falling back to basic rename.")
+            print(f"Error in analyze_document: {e}. Falling back to original filename.")
             return self._fallback_metadata(original_filename)
 
     def _fallback_metadata(self, original_filename: str) -> dict:
-        """Return neutral metadata using generate_filename() for the filename."""
-        filename = self.generate_filename("", original_filename) or self._sanitize_filename(original_filename)
         return {
-            "filename": filename or "unnamed",
+            "filename": self._sanitize_filename(original_filename) or "unnamed",
             "document_type": "other",
             "date": None,
             "company": None,
@@ -223,33 +150,11 @@ class AIRenamer:
         }
 
     def _sanitize_filename(self, filename: str) -> str:
-        """
-        Sanitize filename to ensure it's safe for filesystem.
-
-        Args:
-            filename: Raw filename string
-
-        Returns:
-            Sanitized filename
-        """
         filename = filename.strip('"').strip("'")
-
         replacements = {
-            ' ': '_',
-            '/': '-',
-            '\\': '-',
-            ':': '-',
-            '*': '',
-            '?': '',
-            '"': '',
-            '<': '',
-            '>': '',
-            '|': '-'
+            ' ': '_', '/': '-', '\\': '-', ':': '-',
+            '*': '', '?': '', '"': '', '<': '', '>': '', '|': '-',
         }
-
         for old, new in replacements.items():
             filename = filename.replace(old, new)
-
-        filename = filename.strip('_-.')
-
-        return filename
+        return filename.strip('_-.')
