@@ -9,6 +9,7 @@ Or from this file's directory:
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 from math import ceil
@@ -25,6 +26,10 @@ from flask import Flask, abort, jsonify, render_template, request, send_file, ur
 
 _archive_root_env = os.getenv("ARCHIVE_ROOT", "").strip()
 _ARCHIVE_ROOT = Path(_archive_root_env).resolve() if _archive_root_env else None
+
+_data_dir = Path(os.getenv("DB_PATH", "/data/documents.db")).parent
+_STATUS_FILE = _data_dir / "bot_status.json"
+_LOG_FILE    = _data_dir / "bot.log"
 
 app = Flask(__name__)
 
@@ -225,6 +230,24 @@ def document(doc_id: int) -> str:
         type_colors=TYPE_COLORS,
         back_url=back_url,
     )
+
+
+@app.route("/api/bot-status")
+def bot_status():
+    try:
+        data = json.loads(_STATUS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        data = {"status": "unknown"}
+    return jsonify(data)
+
+
+@app.route("/logs")
+def view_logs():
+    lines = []
+    if _LOG_FILE.exists():
+        text = _LOG_FILE.read_text(encoding="utf-8", errors="replace")
+        lines = text.splitlines()[-500:]  # last 500 lines
+    return render_template("logs.html", lines=lines)
 
 
 @app.route("/api/documents/<int:doc_id>/reclassify", methods=["POST"])

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Bot-Log{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Bot-Log</h1>
+  <div class="d-flex gap-2">
+    <span id="botStatusBadge" class="badge bg-secondary">…</span>
+    <button class="btn btn-outline-secondary btn-sm" onclick="window.location.reload()">↻ Aktualisieren</button>
+  </div>
+</div>
+
+<div class="bg-dark text-light rounded p-3" style="font-family:monospace; font-size:0.78rem; max-height:75vh; overflow-y:auto;" id="logBox">
+{% if lines %}
+{% for line in lines %}
+<div class="log-line{% if 'error' in line.lower() or 'warning' in line.lower() %} text-warning{% endif %}{% if 'fatal' in line.lower() %} text-danger{% endif %}">{{ line }}</div>
+{% endfor %}
+{% else %}
+<div class="text-muted">Noch kein Log vorhanden.</div>
+{% endif %}
+</div>
+
+<script>
+// Scroll to bottom on load
+const logBox = document.getElementById('logBox');
+logBox.scrollTop = logBox.scrollHeight;
+
+// Poll bot status every 5s and update badge
+async function pollStatus() {
+  try {
+    const resp = await fetch('/api/bot-status');
+    const data = await resp.json();
+    const badge = document.getElementById('botStatusBadge');
+    if (data.status === 'processing') {
+      badge.className = 'badge bg-warning text-dark';
+      badge.textContent = '⚙ Verarbeitet: ' + (data.filename || '…');
+      // Reload page to show fresh log output after processing
+      setTimeout(() => window.location.reload(), 3000);
+    } else if (data.status === 'idle') {
+      badge.className = 'badge bg-success';
+      badge.textContent = '✓ Bereit';
+    } else {
+      badge.className = 'badge bg-secondary';
+      badge.textContent = 'Status unbekannt';
+    }
+  } catch(e) {}
+}
+pollStatus();
+setInterval(pollStatus, 5000);
+</script>
+
+{% endblock %}

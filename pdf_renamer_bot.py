@@ -5,8 +5,10 @@ from __future__ import annotations
 Ablage — AI-powered document archiving bot using Microsoft Graph delta polling.
 """
 
+import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,6 +21,51 @@ from pdf_extractor import PDFExtractor
 import db as _db
 
 _MAX_TEXT_STORE = 10_000  # characters to store in DB for full-text search
+_STATUS_FILE = Path(os.getenv("DB_PATH", "/data/documents.db")).parent / "bot_status.json"
+_LOG_FILE    = Path(os.getenv("DB_PATH", "/data/documents.db")).parent / "bot.log"
+
+
+def _write_status(status: str, filename: str = "") -> None:
+    try:
+        _STATUS_FILE.write_text(json.dumps({
+            "status": status,
+            "filename": filename,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }), encoding="utf-8")
+    except Exception:
+        pass
+
+
+class _Tee:
+    """Write to both stdout and a log file simultaneously."""
+    def __init__(self, log_path: Path, max_bytes: int = 2 * 1024 * 1024):
+        self._log_path = log_path
+        self._max_bytes = max_bytes
+        self._orig = sys.stdout
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._f = open(log_path, "a", encoding="utf-8", buffering=1)
+
+    def write(self, data: str) -> int:
+        self._orig.write(data)
+        self._f.write(data)
+        # Truncate if log gets too large (keep last 75%)
+        try:
+            if self._f.tell() > self._max_bytes:
+                self._f.close()
+                content = self._log_path.read_text(encoding="utf-8", errors="replace")
+                keep = content[len(content) // 4:]
+                self._log_path.write_text(keep, encoding="utf-8")
+                self._f = open(self._log_path, "a", encoding="utf-8", buffering=1)
+        except Exception:
+            pass
+        return len(data)
+
+    def flush(self) -> None:
+        self._orig.flush()
+        self._f.flush()
+
+    def fileno(self):
+        return self._orig.fileno()
 
 
 class AblageBot:
@@ -90,6 +137,7 @@ class AblageBot:
         parent_id = parent.get("id")
         parent_path = self._normalize_drive_path(parent.get("path"))
 
+        _write_status("processing", name)
         print(f"\n{'='*60}")
         print(f"Processing: {name}")
         print(f"Source path : {parent_path or '<unknown>'}")
@@ -156,6 +204,8 @@ class AblageBot:
             print(f"Indexed   : {final_name}")
         except Exception as e:
             print(f"Warning   : DB write failed: {e}")
+        finally:
+            _write_status("idle")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -186,6 +236,8 @@ class AblageBot:
 
 
 def main():
+    sys.stdout = _Tee(_LOG_FILE)
+    _write_status("idle")
     try:
         bot = AblageBot()
         bot.run()

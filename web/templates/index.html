@@ -2,6 +2,11 @@
 {% block title %}Dokumentensuche{% endblock %}
 {% block content %}
 
+<div id="botBanner" class="alert alert-warning py-2 px-3 mb-3 d-none">
+  <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+  <strong>Bot verarbeitet:</strong> <span id="botBannerFile"></span>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h4 mb-0">Dokumentensuche</h1>
   <div class="d-flex align-items-center gap-2">
@@ -250,6 +255,28 @@
   {% endif %}
 </div>
 {% endif %}
+
+<script>
+// Poll bot status every 5s — show banner when processing
+(function pollBotStatus() {
+  fetch('/api/bot-status').then(r => r.json()).then(data => {
+    const banner = document.getElementById('botBanner');
+    const fileEl = document.getElementById('botBannerFile');
+    if (data.status === 'processing') {
+      fileEl.textContent = data.filename || '…';
+      banner.classList.remove('d-none');
+    } else {
+      if (!banner.classList.contains('d-none')) {
+        // Was processing, now idle — reload to show new document
+        window.location.reload();
+        return;
+      }
+      banner.classList.add('d-none');
+    }
+  }).catch(() => {});
+  setTimeout(pollBotStatus, 5000);
+})();
+</script>
 
 {% if graph_enabled and rows %}
 <script>
