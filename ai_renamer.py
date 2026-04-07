@@ -26,10 +26,12 @@ class AIRenamer:
 
         Returns:
             Dict with keys: filename, document_type, date, company, sender,
-            recipient, keywords. Falls back to sanitized original filename on failure.
+            recipient, keywords. Falls back to classifying from filename when
+            PDF text is empty, or to _fallback_metadata on total failure.
         """
         if not pdf_content or not pdf_content.strip():
-            return self._fallback_metadata(original_filename)
+            print(f"PDF text empty — classifying from filename: {original_filename}")
+            return self.classify_from_filename(original_filename)
 
         max_content_length = 3000
         truncated_content = pdf_content[:max_content_length]
@@ -155,6 +157,71 @@ class AIRenamer:
         except Exception as e:
             print(f"Error in analyze_document: {e}. Falling back to original filename.")
             return self._fallback_metadata(original_filename)
+
+    def classify_from_filename(self, filename_stem: str) -> dict:
+        """
+        Classify a document based on its structured filename stem alone.
+        Used when PDF text extraction yields nothing.
+
+        The filename follows the pattern: Type_Company_Person_Details_YYYYMMDD
+        where Type is a German document type keyword.
+        """
+        system_prompt = (
+            "You are a document classification assistant. "
+            "You MUST respond with ONLY valid JSON — no markdown, no explanation.\n\n"
+            "Document type taxonomy (pick exactly one):\n"
+            "  invoice, insurance, tax, medical_report, bank_statement,\n"
+            "  contract, warranty, id_document, certificate, letter, quote, other\n\n"
+            "The filename follows a German structured pattern: Type_Company_Person_Details_YYYYMMDD\n"
+            "German type prefix hints:\n"
+            "  Rechnung/Faktura/Jahresrechnung → invoice\n"
+            "  Praemienrechnung/Versicherung   → insurance\n"
+            "  Lohnausweis/Steuer/BVG          → tax\n"
+            "  Kontoauszug/Depotauszug         → bank_statement\n"
+            "  Vertrag/Mietvertrag             → contract\n"
+            "  Garantie                        → warranty\n"
+            "  Arztbericht/Befund              → medical_report\n"
+            "  Zeugnis/Diplom/Zertifikat       → certificate\n"
+            "  Offerte/Angebot                 → quote\n"
+            "  Brief/Schreiben                 → letter\n"
+            "Only use 'other' if the filename gives no usable type hint."
+        )
+        user_prompt = (
+            f"Classify this document based on its filename stem only: {filename_stem}\n\n"
+            "Return a JSON object with:\n"
+            "  document_type — one value from the taxonomy above\n"
+            "  date          — YYYY-MM-DD extracted from the filename, or null\n"
+            "  company       — short company/sender name from the filename, or null\n"
+            "  sender        — sender name if identifiable, or null\n"
+            "  recipient     — recipient name if identifiable, or null\n"
+            "  keywords      — list of 2-5 lowercase keywords derived from the filename\n"
+            "Respond with ONLY the JSON object."
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=200,
+                temperature=0.1,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            raw = response.choices[0].message.content.strip()
+            data = json.loads(raw)
+            return {
+                "filename": filename_stem,  # keep the existing filename as-is
+                "document_type": str(data.get("document_type") or "other").lower(),
+                "date": data.get("date"),
+                "company": data.get("company"),
+                "sender": data.get("sender"),
+                "recipient": data.get("recipient"),
+                "keywords": [str(k).lower() for k in (data.get("keywords") or [])],
+            }
+        except Exception as e:
+            print(f"classify_from_filename error: {e}")
+            return self._fallback_metadata(filename_stem)
 
     def _fallback_metadata(self, original_filename: str) -> dict:
         return {
