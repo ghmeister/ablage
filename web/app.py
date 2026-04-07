@@ -200,7 +200,12 @@ def document(doc_id: int) -> str:
         and local_path
         and (_ARCHIVE_ROOT / local_path).is_file()
     )
-    back_url = request.referrer or "/"
+    # Build back URL from search params passed in the URL, fall back to referrer
+    _back_args = {k: request.args.get(k, "") for k in ("q", "type", "year", "sender", "sort", "order", "page")}
+    if any(_back_args.values()):
+        back_url = "/?" + "&".join(f"{k}={quote_plus(v)}" for k, v in _back_args.items() if v)
+    else:
+        back_url = request.referrer or "/"
     return render_template(
         "document.html",
         doc=doc,
