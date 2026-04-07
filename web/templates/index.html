@@ -168,23 +168,23 @@
   {% for row in rows %}
   <div class="card doc-card shadow-sm">
     <div class="card-body py-2 px-3">
-      <div class="d-flex justify-content-between align-items-start gap-2">
-        <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark flex-grow-1 min-w-0">
-          <span class="doc-filename">{{ row.new_filename }}</span>
-        </a>
+      <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark d-block">
+        <span class="doc-filename">{{ row.new_filename }}</span>
+      </a>
+      <div class="d-flex justify-content-between align-items-center mt-1">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge badge-type bg-{{ row.document_type | type_color }}">
+            {{ row.document_type | type_label }}
+          </span>
+          <span class="small text-muted text-truncate" style="max-width:140px">{{ row.sender or row.company or '–' }}</span>
+        </div>
         <div class="d-flex align-items-center gap-1 flex-shrink-0">
+          <span class="small text-muted">{{ row.document_date or '–' }}</span>
           {% if archive_configured %}
           <a href="/pdf/{{ row.id }}" target="_blank"
              class="btn btn-outline-secondary btn-sm py-0 px-1" title="PDF öffnen">&#128196;</a>
           {% endif %}
-          <span class="badge badge-type bg-{{ row.document_type | type_color }}">
-            {{ row.document_type | type_label }}
-          </span>
         </div>
-      </div>
-      <div class="d-flex justify-content-between mt-1">
-        <span class="small text-muted">{{ row.sender or row.company or '–' }}</span>
-        <span class="small text-muted">{{ row.document_date or '–' }}</span>
       </div>
     </div>
   </div>
