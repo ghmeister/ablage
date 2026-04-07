@@ -153,7 +153,7 @@
         </td>
         {% if archive_configured %}
         <td onclick="event.stopPropagation()">
-          <a href="/pdf/{{ row.id }}" target="_blank"
+          <a href="/view/{{ row.id }}" target="_blank"
              class="btn btn-outline-secondary btn-sm py-0 px-1" title="PDF öffnen">&#128196;</a>
         </td>
         {% endif %}
@@ -178,7 +178,7 @@
         <span class="small text-muted text-truncate flex-grow-1 min-w-0">{{ row.sender or row.company or '–' }}</span>
         <span class="small text-muted flex-shrink-0">{{ row.document_date or '–' }}</span>
         {% if archive_configured %}
-        <a href="/pdf/{{ row.id }}" target="_blank"
+        <a href="/view/{{ row.id }}" target="_blank"
            class="btn btn-outline-secondary btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden" title="PDF öffnen">&#128196;</a>
         {% endif %}
       </div>

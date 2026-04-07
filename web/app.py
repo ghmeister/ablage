@@ -343,6 +343,15 @@ def update_metadata(doc_id: int):
     return jsonify(updates)
 
 
+@app.route("/view/<int:doc_id>")
+def view_pdf(doc_id: int):
+    """HTML wrapper with back button — used by PWA to keep navigation working."""
+    doc = db_module.get_document(doc_id)
+    if doc is None:
+        abort(404)
+    return render_template("pdf_view.html", doc=doc)
+
+
 @app.route("/pdf/<int:doc_id>")
 def open_pdf(doc_id: int):
     if _ARCHIVE_ROOT is None:

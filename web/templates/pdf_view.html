@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>{{ doc.new_filename }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { display: flex; flex-direction: column; height: 100dvh; background: #212529; font-family: system-ui, sans-serif; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.6rem 1rem;
+      background: #212529;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .toolbar a {
+      color: #fff;
+      text-decoration: none;
+      font-size: 1rem;
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.15);
+      white-space: nowrap;
+    }
+    .toolbar span {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.7);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+    }
+    /* iOS fallback: iframes don't show PDFs inline */
+    .ios-fallback {
+      display: none;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+      color: #fff;
+      padding: 2rem;
+      text-align: center;
+    }
+    .ios-fallback a {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      background: #0d6efd;
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="javascript:history.back()">← Zurück</a>
+    <span>{{ doc.new_filename }}</span>
+  </div>
+
+  <iframe id="pdfFrame" src="/pdf/{{ doc.id }}"></iframe>
+
+  <div class="ios-fallback" id="iosFallback">
+    <p>PDF kann nicht inline angezeigt werden.</p>
+    <a href="/pdf/{{ doc.id }}">PDF öffnen</a>
+  </div>
+
+  <script>
+    // On iOS, iframes don't render PDFs — show fallback link instead
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOS) {
+      document.getElementById('pdfFrame').style.display = 'none';
+      document.getElementById('iosFallback').style.display = 'flex';
+    }
+  </script>
+</body>
+</html>
