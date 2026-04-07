@@ -262,7 +262,7 @@ def reclassify(doc_id: int):
         db_module.update_document(
             doc_id,
             document_type=new_type,
-            destination_folder=full_path,
+            destination_folder=rel_path,
             onedrive_path=new_onedrive_path,
             matched_rule=matched_rule,
         )
