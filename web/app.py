@@ -19,7 +19,7 @@ from urllib.parse import quote_plus
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import db as db_module
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, abort, jsonify, render_template, request, send_file, url_for
 
 _archive_root_env = os.getenv("ARCHIVE_ROOT", "").strip()
 _ARCHIVE_ROOT = Path(_archive_root_env) if _archive_root_env else None
@@ -196,11 +196,11 @@ def document(doc_id: int) -> str:
     if doc is None:
         abort(404)
     graph_enabled = bool(os.getenv("TENANT_ID") and os.getenv("CLIENT_ID"))
-    # Button shown if Graph is available (cloud), or local file exists (fallback)
     local_path = _local_onedrive_path(doc.get("onedrive_path") or "")
-    can_open = bool(doc.get("onedrive_path")) and (
-        graph_enabled
-        or bool(_ARCHIVE_ROOT and local_path and (_ARCHIVE_ROOT / local_path).is_file())
+    can_open = bool(
+        _ARCHIVE_ROOT is not None
+        and local_path
+        and (_ARCHIVE_ROOT / local_path).is_file()
     )
     return render_template(
         "document.html",
@@ -321,36 +321,11 @@ def rename_document(doc_id: int):
 
 @app.route("/pdf/<int:doc_id>")
 def open_pdf(doc_id: int):
+    if _ARCHIVE_ROOT is None:
+        abort(404, "ARCHIVE_ROOT not configured")
     doc = db_module.get_document(doc_id)
     if doc is None:
         abort(404)
-
-    # Prefer Graph cloud — works instantly, no local sync delay.
-    # Proxy through Flask so we can set Content-Disposition: inline,
-    # which opens the PDF in the browser instead of triggering a download.
-    graph = _get_graph()
-    if graph and doc.get("onedrive_path"):
-        try:
-            item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
-            download_url = item.get("@microsoft.graph.downloadUrl")
-            if download_url:
-                import io
-                import requests as _requests
-                resp = _requests.get(download_url, timeout=30)
-                resp.raise_for_status()
-                filename = doc.get("new_filename", "document") + ".pdf"
-                return send_file(
-                    io.BytesIO(resp.content),
-                    mimetype="application/pdf",
-                    as_attachment=False,
-                    download_name=filename,
-                )
-        except Exception as e:
-            app.logger.warning(f"Cloud PDF fetch failed, falling back to local: {e}")
-
-    # Fallback: serve from local mount
-    if _ARCHIVE_ROOT is None:
-        abort(404, "ARCHIVE_ROOT not configured and Graph unavailable")
     pdf_path = _ARCHIVE_ROOT / _local_onedrive_path(doc["onedrive_path"])
     if not pdf_path.is_file():
         abort(404, f"File not found: {pdf_path}")
