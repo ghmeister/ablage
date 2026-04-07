@@ -44,7 +44,14 @@ def _load_type_ui() -> tuple[dict[str, str], dict[str, str]]:
 
 TYPE_LABELS, TYPE_COLORS = _load_type_ui()
 
+_APP_VERSION = os.getenv("APP_VERSION", "dev")
+
 _PER_PAGE = 25
+
+
+@app.context_processor
+def inject_globals():
+    return {"app_version": _APP_VERSION}
 
 # ---------------------------------------------------------------------------
 # One-time DB init at startup
