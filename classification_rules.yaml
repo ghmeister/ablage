@@ -3,20 +3,20 @@
 # The year subfolder is always appended automatically (e.g. Versicherung/2026).
 # Unmatched types (or "other") go to unmatched_folder.
 
-unmatched_folder: "Dokumente/Misc"
+unmatched_folder: "Misc"
 
 type_to_folder:
   insurance:      "Versicherung"
   tax:            "Steuer"
   invoice:        "Rechnungen"
-  medical_report: "Dokumente/Arzt"
-  bank_statement: "Dokumente/Kontoauszüge"
-  contract:       "Dokumente/Verträge"
-  warranty:       "Dokumente/Garantienachweise"
-  id_document:    "Dokumente/Ausweise"
-  certificate:    "Dokumente/Zeugnisse"
-  letter:         "Dokumente/Briefe"
-  quote:          "Dokumente/Offerten"
+  medical_report: "Arzt"
+  bank_statement: "Kontoauszüge"
+  contract:       "Verträge"
+  warranty:       "Garantienachweise"
+  id_document:    "Ausweise"
+  certificate:    "Zeugnisse"
+  letter:         "Briefe"
+  quote:          "Offerten"
 
 # German display labels for the web UI
 type_labels:
