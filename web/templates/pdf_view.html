@@ -70,8 +70,8 @@
   <iframe id="pdfFrame" src="/pdf/{{ doc.id }}"></iframe>
 
   <div class="ios-fallback" id="iosFallback">
-    <p>PDF kann nicht inline angezeigt werden.</p>
-    <a href="/pdf/{{ doc.id }}">PDF öffnen</a>
+    <p style="color:rgba(255,255,255,0.6); font-size:0.9rem">Öffnet in Safari — danach «Fertig» tippen um zurückzukehren.</p>
+    <a href="/pdf/{{ doc.id }}" target="_blank">PDF öffnen</a>
   </div>
 
   <script>
