@@ -438,13 +438,7 @@ def folder_url(doc_id: int):
         return jsonify({"error": "No OneDrive path stored"}), 422
     try:
         item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
-        # Get the parent folder item
-        parent_id = item.get("parentReference", {}).get("id")
-        if not parent_id:
-            return jsonify({"error": "Parent folder not found"}), 404
-        from urllib.parse import quote as _quote
-        parent = graph.request("GET", f"{graph.drive_base}/items/{parent_id}").json()
-        return jsonify({"url": parent.get("webUrl")})
+        return jsonify({"url": item.get("webUrl")})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -218,7 +218,7 @@
 <button id="shareBtn" class="btn btn-outline-primary btn-sm ms-2">↑ Teilen</button>
 {% endif %}
 {% if graph_enabled %}
-<button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">📂 Ordner</button>
+<button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">☁ OneDrive</button>
 <button id="deleteBtn" class="btn btn-outline-danger btn-sm ms-2">🗑 Löschen</button>
 {% endif %}
 
@@ -250,7 +250,7 @@ document.getElementById('folderBtn').addEventListener('click', async () => {
     showToast(false, `Fehler: ${e.message}`);
   } finally {
     btn.disabled = false;
-    btn.textContent = '📂 Ordner';
+    btn.textContent = '☁ OneDrive';
   }
 });
 
