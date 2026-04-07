@@ -214,9 +214,6 @@
 {% if can_open %}
 <a href="/pdf/{{ doc.id }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
 {% endif %}
-{% if graph_enabled or can_open %}
-<button id="shareBtn" class="btn btn-outline-primary btn-sm ms-2">↑ Teilen</button>
-{% endif %}
 {% if graph_enabled %}
 <button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">☁ OneDrive</button>
 <button id="deleteBtn" class="btn btn-outline-danger btn-sm ms-2">🗑 Löschen</button>
@@ -426,58 +423,5 @@ saveFilenameBtn.addEventListener('click', async () => {
 });
 </script>
 {% endif %}
-
-<script>
-const shareBtn = document.getElementById('shareBtn');
-if (shareBtn) {
-  shareBtn.addEventListener('click', async () => {
-    shareBtn.disabled = true;
-    shareBtn.textContent = '…';
-    const filename = '{{ (doc.new_filename or "document") | e }}.pdf';
-    const pdfUrl = {% if can_open %}'/pdf/{{ doc.id }}'{% else %}'/api/documents/{{ doc.id }}/download'{% endif %};
-
-    // If Web Share API is available (HTTPS), share the file directly
-    if (navigator.canShare) {
-      try {
-        const urls = [
-          {% if can_open %}'/pdf/{{ doc.id }}',{% endif %}
-          '/api/documents/{{ doc.id }}/download',
-        ];
-        let blob = null;
-        for (const url of urls) {
-          const resp = await fetch(url);
-          if (resp.ok) { blob = await resp.blob(); break; }
-        }
-        if (!blob) throw new Error('PDF konnte nicht geladen werden');
-        const file = new File([blob], filename, { type: 'application/pdf' });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: filename });
-          return;
-        }
-      } catch (e) {
-        if (e.name !== 'AbortError') alert('Fehler: ' + e.message);
-        return;
-      } finally {
-        shareBtn.disabled = false;
-        shareBtn.textContent = '↑ Teilen';
-      }
-    }
-
-    // Fallback (HTTP): share the PDF URL — iOS will offer apps that accept URLs
-    const absUrl = window.location.origin + pdfUrl;
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: filename, url: absUrl });
-      } catch(e) {
-        if (e.name !== 'AbortError') window.open(pdfUrl, '_blank');
-      }
-    } else {
-      window.open(pdfUrl, '_blank');
-    }
-    shareBtn.disabled = false;
-    shareBtn.textContent = '↑ Teilen';
-  });
-}
-</script>
 
 {% endblock %}
