@@ -94,6 +94,7 @@ def _local_onedrive_path(onedrive_path: str) -> str:
     but ARCHIVE_ROOT is already mounted at 'Scanbot/Ablage', so the prefix must be
     removed before joining with ARCHIVE_ROOT.
     """
+    onedrive_path = onedrive_path.lstrip("/")
     archive_root = os.getenv("OUTPUT_BASE_FOLDER", "").strip("/\\")
     if archive_root and onedrive_path.startswith(archive_root + "/"):
         return onedrive_path[len(archive_root) + 1:]
