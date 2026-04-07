@@ -245,7 +245,8 @@ document.getElementById('folderBtn').addEventListener('click', async () => {
     const resp = await fetch(`/api/documents/${DOC_ID}/folder-url`);
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
-    window.open(data.url, '_blank');
+    // Use location.href to trigger iOS universal links → opens OneDrive app
+    window.location.href = data.url;
   } catch(e) {
     showToast(false, `Fehler: ${e.message}`);
   } finally {
