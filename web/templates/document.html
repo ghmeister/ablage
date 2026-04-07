@@ -443,8 +443,17 @@ if (shareBtn) {
       }
     }
 
-    // Fallback (HTTP): open PDF in new tab so user can share via Safari's share button
-    window.open(pdfUrl, '_blank');
+    // Fallback (HTTP): share the PDF URL — iOS will offer apps that accept URLs
+    const absUrl = window.location.origin + pdfUrl;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: filename, url: absUrl });
+      } catch(e) {
+        if (e.name !== 'AbortError') window.open(pdfUrl, '_blank');
+      }
+    } else {
+      window.open(pdfUrl, '_blank');
+    }
     shareBtn.disabled = false;
     shareBtn.textContent = '↑ Teilen';
   });
