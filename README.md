@@ -1,4 +1,4 @@
-# PDF Renamer Bot
+# Ablage
 
 An AI-powered document archiving system for OneDrive. Watches a drop-zone folder, renames incoming PDFs based on their content using GPT-4o-mini, files them into categorised subfolders, and provides a searchable web archive.
 
@@ -9,7 +9,7 @@ An AI-powered document archiving system for OneDrive. Watches a drop-zone folder
 ```
 Scanbot app → OneDrive drop zone
                      ↓  (Graph delta polling, every 30s)
-              pdf-renamer bot
+              Ablage bot
                      ↓
               GPT-4o-mini analysis
               → structured filename  (e.g. Rechnung_Swisscard_Manuel_20260128.pdf)
@@ -65,8 +65,8 @@ The easiest way: open OneDrive in a browser, navigate to your drop-zone folder, 
 version: "3.9"
 
 services:
-  pdf-renamer:
-    image: ghcr.io/minenmaster/pdf-renamer:latest
+  ablage:
+    image: ghcr.io/minenmaster/ablage:latest
     restart: unless-stopped
     environment:
       - OPENAI_API_KEY=sk-...
@@ -86,8 +86,8 @@ services:
     volumes:
       - doc_data:/data
 
-  pdf-renamer-web:
-    image: ghcr.io/minenmaster/pdf-renamer:latest
+  ablage-web:
+    image: ghcr.io/minenmaster/ablage:latest
     restart: unless-stopped
     command: ["python", "web/app.py"]
     ports:
@@ -211,7 +211,7 @@ Use `--no-ai` to skip AI analysis and parse metadata from the structured filenam
 ## Project structure
 
 ```
-pdf-renamer/
+ablage/
 ├── pdf_renamer_bot.py        # Main bot — orchestrates polling, AI, filing
 ├── folder_monitor.py         # Graph delta polling loop
 ├── graph_client.py           # Microsoft Graph API wrapper
