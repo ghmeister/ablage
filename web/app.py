@@ -15,6 +15,8 @@ from math import ceil
 from pathlib import Path
 from urllib.parse import quote_plus
 
+import yaml
+
 # Allow importing db.py from project root
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -22,9 +24,33 @@ import db as db_module
 from flask import Flask, abort, jsonify, render_template, request, send_file, url_for
 
 _archive_root_env = os.getenv("ARCHIVE_ROOT", "").strip()
-_ARCHIVE_ROOT = Path(_archive_root_env) if _archive_root_env else None
+_ARCHIVE_ROOT = Path(_archive_root_env).resolve() if _archive_root_env else None
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------------------
+# Load type labels/colors from classification_rules.yaml (single source of truth)
+# ---------------------------------------------------------------------------
+def _load_type_ui() -> tuple[dict[str, str], dict[str, str]]:
+    rules_file = os.getenv("CLASSIFICATION_RULES_FILE", "classification_rules.yaml")
+    rules_path = Path(rules_file)
+    if not rules_path.is_absolute():
+        rules_path = Path(__file__).parent.parent / rules_file
+    if rules_path.exists():
+        with open(rules_path, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get("type_labels", {}), cfg.get("type_colors", {})
+    return {}, {}
+
+TYPE_LABELS, TYPE_COLORS = _load_type_ui()
+
+_PER_PAGE = 25
+
+# ---------------------------------------------------------------------------
+# One-time DB init at startup
+# ---------------------------------------------------------------------------
+with app.app_context():
+    db_module.init_db()
 
 # ---------------------------------------------------------------------------
 # Lazy Graph + classifier (optional — requires Graph env vars in container)
@@ -88,45 +114,10 @@ def _full_onedrive_path(onedrive_path: str) -> str:
         return f"{archive_root}/{onedrive_path}"
     return onedrive_path
 
-# German labels for document types
-TYPE_LABELS: dict[str, str] = {
-    "invoice": "Rechnung",
-    "insurance": "Versicherung",
-    "tax": "Steuer",
-    "medical_report": "Arztbericht",
-    "bank_statement": "Kontoauszug",
-    "contract": "Vertrag",
-    "warranty": "Garantie",
-    "id_document": "Ausweis",
-    "certificate": "Zeugnis/Diplom",
-    "letter": "Brief",
-    "quote": "Offerte",
-    "other": "Sonstiges",
-}
 
-# Bootstrap 5 badge colours per type
-TYPE_COLORS: dict[str, str] = {
-    "invoice": "danger",
-    "insurance": "primary",
-    "tax": "warning text-dark",
-    "medical_report": "success",
-    "bank_statement": "info text-dark",
-    "contract": "secondary",
-    "warranty": "light text-dark border",
-    "id_document": "dark",
-    "certificate": "primary",
-    "letter": "secondary",
-    "quote": "warning text-dark",
-    "other": "secondary",
-}
-
-_PER_PAGE = 25
-
-
-@app.before_request
-def _ensure_db() -> None:
-    db_module.init_db()
-
+# ---------------------------------------------------------------------------
+# Template filters
+# ---------------------------------------------------------------------------
 
 @app.template_filter("type_label")
 def type_label_filter(value: str) -> str:
@@ -143,15 +134,22 @@ def qp_filter(value: str) -> str:
     return quote_plus(str(value or ""))
 
 
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
 @app.route("/")
 def index() -> str:
     query = request.args.get("q", "").strip()
     doc_type = request.args.get("type", "").strip()
     year = request.args.get("year", "").strip()
     sender = request.args.get("sender", "").strip()
-    page = max(1, int(request.args.get("page", "1") or "1"))
     sort_by = request.args.get("sort", "scan_timestamp").strip()
     sort_order = request.args.get("order", "desc").strip()
+    try:
+        page = max(1, int(request.args.get("page", "1") or "1"))
+    except (ValueError, TypeError):
+        page = 1
 
     try:
         rows, total = db_module.search_documents(
@@ -202,7 +200,6 @@ def document(doc_id: int) -> str:
         and local_path
         and (_ARCHIVE_ROOT / local_path).is_file()
     )
-    # Preserve search parameters so "back" returns to the filtered results
     back_url = request.referrer or "/"
     return render_template(
         "document.html",
@@ -282,12 +279,9 @@ def rename_document(doc_id: int):
     if not new_name:
         return jsonify({"error": "new_filename required"}), 400
 
-    # Ensure .pdf extension for OneDrive; strip it for DB storage (template appends .pdf)
     if new_name.lower().endswith(".pdf"):
-        new_stem = new_name[:-4]
         new_name_with_ext = new_name
     else:
-        new_stem = new_name
         new_name_with_ext = new_name + ".pdf"
 
     doc = db_module.get_document(doc_id)
@@ -329,9 +323,12 @@ def open_pdf(doc_id: int):
     doc = db_module.get_document(doc_id)
     if doc is None:
         abort(404)
-    pdf_path = _ARCHIVE_ROOT / _local_onedrive_path(doc["onedrive_path"])
+    # Resolve and verify path stays within ARCHIVE_ROOT (prevents path traversal)
+    pdf_path = (_ARCHIVE_ROOT / _local_onedrive_path(doc["onedrive_path"])).resolve()
+    if not str(pdf_path).startswith(str(_ARCHIVE_ROOT)):
+        abort(403)
     if not pdf_path.is_file():
-        abort(404, f"File not found: {pdf_path}")
+        abort(404)
     return send_file(str(pdf_path), mimetype="application/pdf")
 
 

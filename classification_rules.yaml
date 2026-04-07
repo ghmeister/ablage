@@ -17,3 +17,33 @@ type_to_folder:
   certificate:    "Dokumente/Zeugnisse"
   letter:         "Dokumente/Briefe"
   quote:          "Dokumente/Offerten"
+
+# German display labels for the web UI
+type_labels:
+  invoice:        "Rechnung"
+  insurance:      "Versicherung"
+  tax:            "Steuer"
+  medical_report: "Arztbericht"
+  bank_statement: "Kontoauszug"
+  contract:       "Vertrag"
+  warranty:       "Garantie"
+  id_document:    "Ausweis"
+  certificate:    "Zeugnis/Diplom"
+  letter:         "Brief"
+  quote:          "Offerte"
+  other:          "Sonstiges"
+
+# Bootstrap 5 badge colours for the web UI
+type_colors:
+  invoice:        "danger"
+  insurance:      "primary"
+  tax:            "warning text-dark"
+  medical_report: "success"
+  bank_statement: "info text-dark"
+  contract:       "secondary"
+  warranty:       "light text-dark border"
+  id_document:    "dark"
+  certificate:    "primary"
+  letter:         "secondary"
+  quote:          "warning text-dark"
+  other:          "secondary"

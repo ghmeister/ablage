@@ -61,11 +61,24 @@
               {% endfor %}
             </select>
           </div>
-          <div class="col-12 col-md-2 d-none d-md-block">
-            <button type="submit" class="btn btn-primary btn-sm w-100">Anwenden</button>
+          <div class="col-6 col-md-2">
+            <label class="form-label fw-semibold small mb-1">Sortierung</label>
+            <select name="sort" class="form-select form-select-sm">
+              <option value="scan_timestamp" {% if sort_by == 'scan_timestamp' %}selected{% endif %}>Erfasst</option>
+              <option value="document_date"  {% if sort_by == 'document_date'  %}selected{% endif %}>Datum</option>
+              <option value="new_filename"   {% if sort_by == 'new_filename'   %}selected{% endif %}>Dateiname</option>
+              <option value="sender"         {% if sort_by == 'sender'         %}selected{% endif %}>Absender</option>
+            </select>
           </div>
-          <div class="col-12 d-md-none">
-            <button type="submit" class="btn btn-primary btn-sm w-100">Filter anwenden</button>
+          <div class="col-6 col-md-1">
+            <label class="form-label fw-semibold small mb-1">Reihenfolge</label>
+            <select name="order" class="form-select form-select-sm">
+              <option value="desc" {% if sort_order == 'desc' %}selected{% endif %}>↓ Neu</option>
+              <option value="asc"  {% if sort_order == 'asc'  %}selected{% endif %}>↑ Alt</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-2">
+            <button type="submit" class="btn btn-primary btn-sm w-100 mt-md-4">Anwenden</button>
           </div>
         </div>
       </div>

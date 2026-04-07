@@ -4,7 +4,7 @@
 
 <nav aria-label="breadcrumb" class="mb-3">
   <ol class="breadcrumb">
-    <li class="breadcrumb-item"><a href="/">Suche</a></li>
+    <li class="breadcrumb-item"><a href="{{ back_url }}">Suche</a></li>
     <li class="breadcrumb-item active" aria-current="page">{{ doc.new_filename }}</li>
   </ol>
 </nav>
@@ -55,15 +55,14 @@
   </div>
 
   <div class="card-body">
-    <div class="row g-4">
+    <div class="row g-3">
 
-      {# Left column — Document info #}
+      {# ── Main info — always visible ── #}
       <div class="col-12 col-md-6">
-        <h6 class="text-muted text-uppercase small mb-2">Dokument</h6>
         <table class="table table-sm table-borderless mb-0">
           <tbody>
             <tr>
-              <th class="text-muted fw-normal ps-0" style="width:40%">Dokumentdatum</th>
+              <th class="text-muted fw-normal ps-0" style="width:40%">Datum</th>
               <td>{{ doc.document_date or '–' }}</td>
             </tr>
             <tr>
@@ -75,40 +74,18 @@
               <td>{{ doc.recipient or '–' }}</td>
             </tr>
             <tr>
-              <th class="text-muted fw-normal ps-0">Firma/Aussteller</th>
-              <td>{{ doc.company or '–' }}</td>
-            </tr>
-            <tr>
-              <th class="text-muted fw-normal ps-0">Stichwörter</th>
-              <td>
-                {% if doc.keywords %}
-                  {% for kw in doc.keywords.split(',') %}
-                  <span class="badge bg-light text-dark border me-1 mb-1" style="font-size:0.72rem">
-                    {{ kw.strip() }}
-                  </span>
-                  {% endfor %}
-                {% else %}–{% endif %}
-              </td>
+              <th class="text-muted fw-normal ps-0">Erfasst am</th>
+              <td class="text-muted small">{{ doc.scan_timestamp[:10] if doc.scan_timestamp else '–' }}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      {# Right column — Archive info #}
       <div class="col-12 col-md-6">
-        <h6 class="text-muted text-uppercase small mb-2">Archiv</h6>
         <table class="table table-sm table-borderless mb-0">
           <tbody>
             <tr>
-              <th class="text-muted fw-normal ps-0" style="width:40%">Erfasst am</th>
-              <td>{{ doc.scan_timestamp or '–' }}</td>
-            </tr>
-            <tr>
-              <th class="text-muted fw-normal ps-0">Originaldatei</th>
-              <td class="text-break small">{{ doc.original_filename or '–' }}</td>
-            </tr>
-            <tr>
-              <th class="text-muted fw-normal ps-0">Dateiname</th>
+              <th class="text-muted fw-normal ps-0" style="width:40%">Dateiname</th>
               <td class="fw-semibold small">
                 {% if graph_enabled %}
                 <span id="filenameDisplay">{{ doc.new_filename or '–' }}</span>
@@ -125,26 +102,60 @@
               </td>
             </tr>
             <tr>
-              <th class="text-muted fw-normal ps-0">Zielordner</th>
+              <th class="text-muted fw-normal ps-0">Ordner</th>
               <td class="small" id="destFolderCell">{{ doc.destination_folder or '–' }}</td>
-            </tr>
-            <tr>
-              <th class="text-muted fw-normal ps-0">OneDrive-Pfad</th>
-              <td class="text-break small text-muted" id="onedrivePath">{{ doc.onedrive_path or '–' }}</td>
-            </tr>
-            <tr>
-              <th class="text-muted fw-normal ps-0">Klassifizierung</th>
-              <td class="small" id="matchedRule">{{ doc.matched_rule or '–' }}</td>
             </tr>
           </tbody>
         </table>
       </div>
 
+      {# Keywords #}
+      {% if doc.keywords %}
+      <div class="col-12">
+        {% for kw in doc.keywords.split(',') %}
+        <span class="badge bg-light text-dark border me-1 mb-1" style="font-size:0.72rem">{{ kw.strip() }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {# ── Technical details — collapsed by default ── #}
+      <div class="col-12">
+        <button class="btn btn-link btn-sm text-muted ps-0 text-decoration-none"
+                type="button" data-bs-toggle="collapse" data-bs-target="#techDetails"
+                aria-expanded="false">
+          ▸ Technische Details
+        </button>
+        <div class="collapse" id="techDetails">
+          <table class="table table-sm table-borderless mt-2 mb-0">
+            <tbody>
+              <tr>
+                <th class="text-muted fw-normal ps-0" style="width:30%">Originaldatei</th>
+                <td class="text-break small text-muted">{{ doc.original_filename or '–' }}</td>
+              </tr>
+              <tr>
+                <th class="text-muted fw-normal ps-0">OneDrive-Pfad</th>
+                <td class="text-break small text-muted" id="onedrivePath">{{ doc.onedrive_path or '–' }}</td>
+              </tr>
+              <tr>
+                <th class="text-muted fw-normal ps-0">Klassifizierung</th>
+                <td class="small text-muted" id="matchedRule">{{ doc.matched_rule or '–' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {# Extracted text #}
       {% if doc.extracted_text %}
       <div class="col-12">
-        <h6 class="text-muted text-uppercase small mb-2">Extrahierter Textinhalt</h6>
-        <pre class="bg-light border rounded p-3 extracted-text">{{ doc.extracted_text }}</pre>
+        <button class="btn btn-link btn-sm text-muted ps-0 text-decoration-none"
+                type="button" data-bs-toggle="collapse" data-bs-target="#extractedText"
+                aria-expanded="false">
+          ▸ Extrahierter Text
+        </button>
+        <div class="collapse" id="extractedText">
+          <pre class="bg-light border rounded p-3 mt-2 extracted-text">{{ doc.extracted_text }}</pre>
+        </div>
       </div>
       {% endif %}
 
@@ -200,14 +211,10 @@ saveTypeBtn.addEventListener('click', async () => {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
-
-    // Update badge
     typeBadge.textContent = data.type_label;
     typeBadge.className = `badge badge-type bg-${data.type_color}`;
-    // Update table cells
     document.getElementById('destFolderCell').textContent = data.destination_folder;
     document.getElementById('matchedRule').textContent = data.matched_rule;
-    // Update onedrive path if returned
     typeEditWrap.classList.add('d-none');
     typeBadgeWrap.classList.remove('d-none');
     showToast(true, `Kategorie geändert → ${data.destination_folder}`);
@@ -250,7 +257,6 @@ saveFilenameBtn.addEventListener('click', async () => {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
-
     filenameDisplay.textContent = data.new_filename;
     filenameInput.value = data.new_filename;
     document.getElementById('headerFilename').textContent = data.new_filename + '.pdf';
@@ -272,7 +278,6 @@ saveFilenameBtn.addEventListener('click', async () => {
 {% if can_open %}
 <script>
 const shareBtn = document.getElementById('shareBtn');
-// Only show if Web Share API supports files (iOS Safari, Android Chrome)
 if (shareBtn && navigator.canShare) {
   shareBtn.classList.remove('d-none');
   shareBtn.addEventListener('click', async () => {
