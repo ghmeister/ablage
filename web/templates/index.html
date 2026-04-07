@@ -14,9 +14,7 @@
   <div class="input-group mb-2">
     <input type="text" name="q" value="{{ query }}" class="form-control"
            placeholder="Stichwort, Firma, Inhalt …" autofocus>
-    {% if query or doc_type or year or sender %}
     <a href="/" class="btn btn-outline-secondary" title="Filter zurücksetzen">✕</a>
-    {% endif %}
     <button type="submit" class="btn btn-primary">Suchen</button>
   </div>
 
