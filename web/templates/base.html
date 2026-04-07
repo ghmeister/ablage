@@ -28,6 +28,7 @@
     .doc-card { border-left: 4px solid #dee2e6; transition: background .15s; }
     .doc-card:active { background-color: #e9ecef; }
     .doc-card .doc-filename {
+      display: block;
       font-weight: 600;
       font-size: 0.9rem;
       white-space: nowrap;
@@ -38,6 +39,11 @@
     /* Larger tap targets for edit buttons on touch devices */
     @media (max-width: 767.98px) {
       .btn-edit-inline { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
+    }
+
+    /* Hide PDF button in portrait mode to save space */
+    @media (orientation: portrait) and (max-width: 767.98px) {
+      .pdf-btn-portrait-hidden { display: none !important; }
     }
   </style>
 </head>
