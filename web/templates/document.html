@@ -25,20 +25,32 @@
   </div>
 </div>
 
+<style>
+  .editable {
+    cursor: pointer;
+    border-bottom: 1px dashed rgba(255,255,255,0.4);
+    transition: border-color .15s;
+  }
+  .editable:hover { border-bottom-color: rgba(255,255,255,0.9); }
+  .editable-light {
+    cursor: pointer;
+    border-bottom: 1px dashed #adb5bd;
+    transition: border-color .15s;
+  }
+  .editable-light:hover { border-bottom-color: #495057; }
+</style>
+
 <div class="card shadow-sm mb-4">
   <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-2">
     <span class="fw-semibold text-truncate me-2" title="{{ doc.new_filename }}.pdf" id="headerFilename">
       {{ doc.new_filename }}.pdf
     </span>
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
-      {# --- Category badge + inline editor --- #}
-      <span id="typeBadgeWrap">
+      {# --- Category badge — click to edit --- #}
+      <span id="typeBadgeWrap" {% if graph_enabled %}class="editable" title="Klicken zum Ändern"{% endif %}>
         <span class="badge bg-{{ doc.document_type | type_color }} badge-type" id="typeBadge">
           {{ doc.document_type | type_label }}
         </span>
-        {% if graph_enabled %}
-        <button class="btn btn-sm btn-outline-light ms-1 btn-edit-inline" id="editTypeBtn" title="Kategorie ändern">✎</button>
-        {% endif %}
       </span>
       {% if graph_enabled %}
       <span id="typeEditWrap" class="d-none d-flex align-items-center gap-1">
@@ -64,11 +76,10 @@
             <tr>
               <th class="text-muted fw-normal ps-0" style="width:40%">Datum</th>
               <td>
-                <span class="meta-display" id="display-document_date">{{ doc.document_date or '–' }}</span>
+                <span class="meta-display{% if graph_enabled %} editable-light{% endif %}"
+                      id="display-document_date"
+                      {% if graph_enabled %}title="Klicken zum Bearbeiten"{% endif %}>{{ doc.document_date or '–' }}</span>
                 {% if graph_enabled %}
-                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline meta-edit-btn"
-                        data-field="document_date" data-value="{{ doc.document_date or '' }}"
-                        title="Bearbeiten">✎</button>
                 <span class="meta-edit-wrap d-none" id="edit-document_date">
                   <input type="date" class="form-control form-control-sm d-inline-block mt-1"
                          id="input-document_date" value="{{ doc.document_date or '' }}" style="max-width:180px">
@@ -81,11 +92,10 @@
             <tr>
               <th class="text-muted fw-normal ps-0">Absender</th>
               <td>
-                <span class="meta-display" id="display-sender">{{ doc.sender or doc.company or '–' }}</span>
+                <span class="meta-display{% if graph_enabled %} editable-light{% endif %}"
+                      id="display-sender"
+                      {% if graph_enabled %}title="Klicken zum Bearbeiten"{% endif %}>{{ doc.sender or doc.company or '–' }}</span>
                 {% if graph_enabled %}
-                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline meta-edit-btn"
-                        data-field="sender" data-value="{{ doc.sender or '' }}"
-                        title="Bearbeiten">✎</button>
                 <span class="meta-edit-wrap d-none" id="edit-sender">
                   <input type="text" class="form-control form-control-sm d-inline-block mt-1"
                          id="input-sender" value="{{ doc.sender or '' }}" style="max-width:280px">
@@ -98,11 +108,10 @@
             <tr>
               <th class="text-muted fw-normal ps-0">Empfänger</th>
               <td>
-                <span class="meta-display" id="display-recipient">{{ doc.recipient or '–' }}</span>
+                <span class="meta-display{% if graph_enabled %} editable-light{% endif %}"
+                      id="display-recipient"
+                      {% if graph_enabled %}title="Klicken zum Bearbeiten"{% endif %}>{{ doc.recipient or '–' }}</span>
                 {% if graph_enabled %}
-                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline meta-edit-btn"
-                        data-field="recipient" data-value="{{ doc.recipient or '' }}"
-                        title="Bearbeiten">✎</button>
                 <span class="meta-edit-wrap d-none" id="edit-recipient">
                   <input type="text" class="form-control form-control-sm d-inline-block mt-1"
                          id="input-recipient" value="{{ doc.recipient or '' }}" style="max-width:280px">
@@ -127,8 +136,7 @@
               <th class="text-muted fw-normal ps-0" style="width:40%">Dateiname</th>
               <td class="fw-semibold small">
                 {% if graph_enabled %}
-                <span id="filenameDisplay">{{ doc.new_filename or '–' }}</span>
-                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline" id="editFilenameBtn" title="Umbenennen">✎</button>
+                <span id="filenameDisplay" class="editable-light" title="Klicken zum Umbenennen">{{ doc.new_filename or '–' }}</span>
                 <span id="filenameEditWrap" class="d-none">
                   <input type="text" class="form-control form-control-sm d-inline-block mt-1"
                          id="filenameInput" value="{{ doc.new_filename or '' }}" style="max-width:320px">
@@ -221,24 +229,28 @@ function showToast(success, msg) {
   bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
 }
 
-// ---------- Category edit ----------
-const editTypeBtn    = document.getElementById('editTypeBtn');
-const cancelTypeBtn  = document.getElementById('cancelTypeBtn');
-const saveTypeBtn    = document.getElementById('saveTypeBtn');
-const typeBadgeWrap  = document.getElementById('typeBadgeWrap');
-const typeEditWrap   = document.getElementById('typeEditWrap');
-const typeBadge      = document.getElementById('typeBadge');
-const typeSelect     = document.getElementById('typeSelect');
+// ---------- Category — click badge to edit ----------
+const typeBadgeWrap = document.getElementById('typeBadgeWrap');
+const typeEditWrap  = document.getElementById('typeEditWrap');
+const typeBadge     = document.getElementById('typeBadge');
+const typeSelect    = document.getElementById('typeSelect');
+const saveTypeBtn   = document.getElementById('saveTypeBtn');
+const cancelTypeBtn = document.getElementById('cancelTypeBtn');
 
-editTypeBtn.addEventListener('click', () => {
+function openTypeEdit() {
   typeBadgeWrap.classList.add('d-none');
   typeEditWrap.classList.remove('d-none');
   typeSelect.focus();
-});
-cancelTypeBtn.addEventListener('click', () => {
+}
+function closeTypeEdit() {
   typeEditWrap.classList.add('d-none');
   typeBadgeWrap.classList.remove('d-none');
-});
+}
+
+typeBadgeWrap.addEventListener('click', openTypeEdit);
+cancelTypeBtn.addEventListener('click', closeTypeEdit);
+typeSelect.addEventListener('keydown', e => { if (e.key === 'Escape') closeTypeEdit(); });
+
 saveTypeBtn.addEventListener('click', async () => {
   saveTypeBtn.disabled = true;
   saveTypeBtn.textContent = '…';
@@ -254,8 +266,7 @@ saveTypeBtn.addEventListener('click', async () => {
     typeBadge.className = `badge badge-type bg-${data.type_color}`;
     document.getElementById('destFolderCell').textContent = data.destination_folder;
     document.getElementById('matchedRule').textContent = data.matched_rule;
-    typeEditWrap.classList.add('d-none');
-    typeBadgeWrap.classList.remove('d-none');
+    closeTypeEdit();
     showToast(true, `Kategorie geändert → ${data.destination_folder}`);
   } catch(e) {
     showToast(false, `Fehler: ${e.message}`);
@@ -265,24 +276,32 @@ saveTypeBtn.addEventListener('click', async () => {
   }
 });
 
-// ---------- Metadata fields (date, sender, recipient) ----------
-document.querySelectorAll('.meta-edit-btn').forEach(btn => {
-  const field = btn.dataset.field;
-  btn.addEventListener('click', () => {
-    document.getElementById(`display-${field}`).classList.add('d-none');
-    btn.classList.add('d-none');
+// ---------- Metadata fields — click value to edit ----------
+document.querySelectorAll('.meta-display.editable-light').forEach(span => {
+  const field = span.id.replace('display-', '');
+  span.addEventListener('click', () => {
+    span.classList.add('d-none');
     document.getElementById(`edit-${field}`).classList.remove('d-none');
     document.getElementById(`input-${field}`).focus();
   });
 });
+
+function closeMeta(field) {
+  document.getElementById(`edit-${field}`).classList.add('d-none');
+  document.getElementById(`display-${field}`).classList.remove('d-none');
+}
+
 document.querySelectorAll('.meta-cancel-btn').forEach(btn => {
-  const field = btn.dataset.field;
-  btn.addEventListener('click', () => {
-    document.getElementById(`edit-${field}`).classList.add('d-none');
-    document.getElementById(`display-${field}`).classList.remove('d-none');
-    document.querySelector(`.meta-edit-btn[data-field="${field}"]`).classList.remove('d-none');
+  btn.addEventListener('click', () => closeMeta(btn.dataset.field));
+});
+
+document.querySelectorAll('.meta-edit-wrap input').forEach(input => {
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeMeta(input.id.replace('input-', ''));
+    if (e.key === 'Enter')  input.closest('.meta-edit-wrap').querySelector('.meta-save-btn').click();
   });
 });
+
 document.querySelectorAll('.meta-save-btn').forEach(btn => {
   const field = btn.dataset.field;
   btn.addEventListener('click', async () => {
@@ -301,9 +320,7 @@ document.querySelectorAll('.meta-save-btn').forEach(btn => {
       if (!resp.ok) throw new Error(data.error || resp.statusText);
       const display = document.getElementById(`display-${field}`);
       display.textContent = value || '–';
-      display.classList.remove('d-none');
-      document.getElementById(`edit-${field}`).classList.add('d-none');
-      document.querySelector(`.meta-edit-btn[data-field="${field}"]`).classList.remove('d-none');
+      closeMeta(field);
       showToast(true, 'Gespeichert.');
     } catch(e) {
       showToast(false, `Fehler: ${e.message}`);
@@ -314,24 +331,28 @@ document.querySelectorAll('.meta-save-btn').forEach(btn => {
   });
 });
 
-// ---------- Filename edit ----------
-const editFilenameBtn   = document.getElementById('editFilenameBtn');
+// ---------- Filename — click to edit ----------
+const filenameDisplay  = document.getElementById('filenameDisplay');
+const filenameEditWrap = document.getElementById('filenameEditWrap');
+const filenameInput    = document.getElementById('filenameInput');
+const saveFilenameBtn  = document.getElementById('saveFilenameBtn');
 const cancelFilenameBtn = document.getElementById('cancelFilenameBtn');
-const saveFilenameBtn   = document.getElementById('saveFilenameBtn');
-const filenameDisplay   = document.getElementById('filenameDisplay');
-const filenameEditWrap  = document.getElementById('filenameEditWrap');
-const filenameInput     = document.getElementById('filenameInput');
 
-editFilenameBtn.addEventListener('click', () => {
-  editFilenameBtn.classList.add('d-none');
+function openFilenameEdit() {
+  filenameDisplay.classList.add('d-none');
   filenameEditWrap.classList.remove('d-none');
   filenameInput.focus();
   filenameInput.select();
-});
-cancelFilenameBtn.addEventListener('click', () => {
+}
+function closeFilenameEdit() {
   filenameEditWrap.classList.add('d-none');
-  editFilenameBtn.classList.remove('d-none');
-});
+  filenameDisplay.classList.remove('d-none');
+}
+
+filenameDisplay.addEventListener('click', openFilenameEdit);
+cancelFilenameBtn.addEventListener('click', closeFilenameEdit);
+filenameInput.addEventListener('keydown', e => { if (e.key === 'Escape') closeFilenameEdit(); });
+
 saveFilenameBtn.addEventListener('click', async () => {
   const newName = filenameInput.value.trim();
   if (!newName) return;
@@ -350,8 +371,7 @@ saveFilenameBtn.addEventListener('click', async () => {
     document.getElementById('headerFilename').textContent = data.new_filename + '.pdf';
     document.getElementById('headerFilename').title = data.new_filename + '.pdf';
     document.getElementById('onedrivePath').textContent = data.onedrive_path;
-    filenameEditWrap.classList.add('d-none');
-    editFilenameBtn.classList.remove('d-none');
+    closeFilenameEdit();
     showToast(true, `Umbenannt zu ${data.new_filename}.pdf`);
   } catch(e) {
     showToast(false, `Fehler: ${e.message}`);
