@@ -186,6 +186,12 @@ def update_document(doc_id: int, **fields) -> None:
         )
 
 
+def delete_document(doc_id: int) -> None:
+    """Delete a document record by id."""
+    with _conn() as conn:
+        conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+
+
 _SORTABLE_COLUMNS = {
     "document_date", "new_filename", "document_type",
     "sender", "recipient", "destination_folder", "scan_timestamp",

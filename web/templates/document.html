@@ -215,10 +215,14 @@
 <a href="/pdf/{{ doc.id }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
 <button id="shareBtn" class="btn btn-outline-primary btn-sm ms-2 d-none">↑ Teilen</button>
 {% endif %}
+{% if graph_enabled %}
+<button id="deleteBtn" class="btn btn-outline-danger btn-sm ms-2">🗑 Löschen</button>
+{% endif %}
 
 {% if graph_enabled %}
 <script>
 const DOC_ID = {{ doc.id }};
+const BACK_URL = {{ back_url | tojson }};
 const TYPE_COLORS = {{ type_colors | tojson }};
 
 function showToast(success, msg) {
@@ -228,6 +232,24 @@ function showToast(success, msg) {
   const el = document.getElementById(id);
   bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
 }
+
+// ---------- Delete ----------
+document.getElementById('deleteBtn').addEventListener('click', async () => {
+  if (!confirm(`"${document.getElementById('headerFilename').textContent}" wirklich löschen?\n\nDie Datei wird aus OneDrive und dem Archiv entfernt.`)) return;
+  const btn = document.getElementById('deleteBtn');
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const resp = await fetch(`/api/documents/${DOC_ID}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    window.location.href = BACK_URL;
+  } catch(e) {
+    showToast(false, `Fehler: ${e.message}`);
+    btn.disabled = false;
+    btn.textContent = '🗑 Löschen';
+  }
+});
 
 // ---------- Category — click badge to edit ----------
 const typeBadgeWrap = document.getElementById('typeBadgeWrap');

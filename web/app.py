@@ -194,6 +194,7 @@ def index() -> str:
         sort_by=sort_by,
         sort_order=sort_order,
         archive_configured=_ARCHIVE_ROOT is not None,
+        graph_enabled=bool(_get_graph()),
     )
 
 
@@ -350,6 +351,55 @@ def view_pdf(doc_id: int):
     if doc is None:
         abort(404)
     return render_template("pdf_view.html", doc=doc)
+
+
+@app.route("/api/documents/<int:doc_id>", methods=["DELETE"])
+def delete_document(doc_id: int):
+    doc = db_module.get_document(doc_id)
+    if doc is None:
+        return jsonify({"error": "not found"}), 404
+
+    # Delete from OneDrive if Graph is available and path is known
+    if doc.get("onedrive_path"):
+        graph = _get_graph()
+        if graph:
+            try:
+                item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
+                graph.delete_item(item["id"])
+            except Exception as e:
+                app.logger.warning(f"OneDrive delete failed for {doc_id}: {e}")
+                return jsonify({"error": f"OneDrive delete failed: {e}"}), 500
+
+    db_module.delete_document(doc_id)
+    return jsonify({"deleted": doc_id})
+
+
+@app.route("/api/documents/bulk-delete", methods=["POST"])
+def bulk_delete():
+    data = request.get_json(force=True) or {}
+    ids = [int(i) for i in (data.get("ids") or []) if str(i).isdigit()]
+    if not ids:
+        return jsonify({"error": "ids required"}), 400
+
+    graph = _get_graph()
+    errors = []
+    deleted = []
+
+    for doc_id in ids:
+        doc = db_module.get_document(doc_id)
+        if doc is None:
+            continue
+        if doc.get("onedrive_path") and graph:
+            try:
+                item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
+                graph.delete_item(item["id"])
+            except Exception as e:
+                errors.append({"id": doc_id, "error": str(e)})
+                continue
+        db_module.delete_document(doc_id)
+        deleted.append(doc_id)
+
+    return jsonify({"deleted": deleted, "errors": errors})
 
 
 @app.route("/pdf/<int:doc_id>")

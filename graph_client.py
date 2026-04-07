@@ -235,6 +235,11 @@ class GraphClient:
 
         raise GraphAPIError(f"Could not find a free filename after 99 attempts (base: {new_name})")
 
+    def delete_item(self, item_id: str) -> None:
+        """Permanently delete a drive item by its ID."""
+        url = f"{self.drive_base}/items/{item_id}"
+        self.request("DELETE", url, allow_statuses={204})
+
     def get_item_by_path(self, path: str) -> dict:
         """Fetch a drive item by its path relative to the drive root."""
         from urllib.parse import quote as _quote

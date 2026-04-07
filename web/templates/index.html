@@ -4,7 +4,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h4 mb-0">Dokumentensuche</h1>
-  <span class="text-muted small">{{ total }} Dokument{% if total != 1 %}e{% endif %}</span>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-muted small">{{ total }} Dokument{% if total != 1 %}e{% endif %}</span>
+    {% if graph_enabled %}
+    <button id="bulkDeleteBtn" class="btn btn-outline-danger btn-sm d-none">🗑 Auswahl löschen (<span id="selCount">0</span>)</button>
+    {% endif %}
+  </div>
 </div>
 
 {# ── Search / Filter Form ─────────────────────────────────────────── #}
@@ -121,6 +126,7 @@
     {%- endmacro %}
     <thead class="table-dark">
       <tr>
+        {% if graph_enabled %}<th style="width:32px"><input type="checkbox" id="selectAll" class="form-check-input mt-0"></th>{% endif %}
         {{ sort_th("Datum",     "document_date",      "100px") }}
         {{ sort_th("Dateiname", "new_filename") }}
         {{ sort_th("Typ",       "document_type",      "110px") }}
@@ -134,6 +140,11 @@
     <tbody>
       {% for row in rows %}
       <tr onclick="window.location='/document/{{ row.id }}{{ search_qs|e }}'">
+        {% if graph_enabled %}
+        <td onclick="event.stopPropagation()">
+          <input type="checkbox" class="form-check-input mt-0 row-check" value="{{ row.id }}">
+        </td>
+        {% endif %}
         <td class="text-nowrap small">{{ row.document_date or '–' }}</td>
         <td class="filename-cell" title="{{ row.new_filename }}">
           <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none fw-semibold text-dark"
@@ -153,7 +164,7 @@
         </td>
         {% if archive_configured %}
         <td onclick="event.stopPropagation()">
-          <a href="/pdf/{{ row.id }}" target="_blank" target="_blank"
+          <a href="/pdf/{{ row.id }}" target="_blank"
              class="btn btn-outline-secondary btn-sm py-0 px-1" title="PDF öffnen">&#128196;</a>
         </td>
         {% endif %}
@@ -238,6 +249,60 @@
   <a href="/" class="btn btn-sm btn-outline-secondary">Filter zurücksetzen</a>
   {% endif %}
 </div>
+{% endif %}
+
+{% if graph_enabled and rows %}
+<script>
+const selectAll    = document.getElementById('selectAll');
+const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+const selCountEl   = document.getElementById('selCount');
+
+function updateBulkBtn() {
+  const checked = document.querySelectorAll('.row-check:checked');
+  const n = checked.length;
+  selCountEl.textContent = n;
+  bulkDeleteBtn.classList.toggle('d-none', n === 0);
+}
+
+selectAll && selectAll.addEventListener('change', () => {
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = selectAll.checked);
+  updateBulkBtn();
+});
+
+document.querySelectorAll('.row-check').forEach(cb => {
+  cb.addEventListener('change', () => {
+    if (selectAll) selectAll.checked = [...document.querySelectorAll('.row-check')].every(c => c.checked);
+    updateBulkBtn();
+  });
+});
+
+bulkDeleteBtn && bulkDeleteBtn.addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('.row-check:checked')].map(cb => parseInt(cb.value));
+  if (!ids.length) return;
+  if (!confirm(`${ids.length} Dokument(e) wirklich löschen?\n\nDie Dateien werden aus OneDrive und dem Archiv entfernt.`)) return;
+
+  bulkDeleteBtn.disabled = true;
+  bulkDeleteBtn.textContent = '…';
+
+  try {
+    const resp = await fetch('/api/documents/bulk-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    if (data.errors && data.errors.length) {
+      alert(`${data.deleted.length} gelöscht, ${data.errors.length} Fehler:\n` + data.errors.map(e => e.error).join('\n'));
+    }
+    window.location.reload();
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+    bulkDeleteBtn.disabled = false;
+    bulkDeleteBtn.innerHTML = '🗑 Auswahl löschen (<span id="selCount">' + ids.length + '</span>)';
+  }
+});
+</script>
 {% endif %}
 
 {% endblock %}
