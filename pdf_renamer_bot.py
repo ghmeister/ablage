@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 """
-Cloud-native PDF Renamer Bot using Microsoft Graph delta polling.
+Ablage — AI-powered document archiving bot using Microsoft Graph delta polling.
 """
 
 import os
@@ -21,7 +21,7 @@ import db as _db
 _MAX_TEXT_STORE = 10_000  # characters to store in DB for full-text search
 
 
-class PDFRenamerBot:
+class AblageBot:
     """Main bot that orchestrates Graph polling, AI naming, and filing."""
 
     def __init__(self):
@@ -133,12 +133,16 @@ class PDFRenamerBot:
         if matched_rule != "n/a":
             print(f"Rule      : {matched_rule}")
 
+        # destination_folder stores only the relative path (without OUTPUT_BASE_FOLDER prefix)
+        # so it stays consistent with backfill-indexed documents
+        db_folder = rel_path if self.classifier else display_path
+
         # Write to document index
         try:
             _db.insert_document(
                 original_filename=name,
                 new_filename=final_stem,
-                destination_folder=display_path,
+                destination_folder=db_folder,
                 onedrive_path=f"{display_path}/{final_name}",
                 document_type=metadata.get("document_type"),
                 document_date=metadata.get("date"),
@@ -171,8 +175,8 @@ class PDFRenamerBot:
         print(
             """
 ╔════════════════════════════════════════════════════════════╗
-║              PDF Renamer Bot (Graph)                        ║
-║  AI-powered automatic PDF renaming and filing via Graph     ║
+║                       Ablage                               ║
+║     AI-powered document archiving via Microsoft Graph      ║
 ╚════════════════════════════════════════════════════════════╝
 """
         )
@@ -183,7 +187,7 @@ class PDFRenamerBot:
 
 def main():
     try:
-        bot = PDFRenamerBot()
+        bot = AblageBot()
         bot.run()
     except KeyboardInterrupt:
         print("\nExiting...")
