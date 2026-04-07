@@ -155,6 +155,7 @@
 <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">&larr; Zurück zur Suche</a>
 {% if can_open %}
 <a href="/pdf/{{ doc.id }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
+<button id="shareBtn" class="btn btn-outline-primary btn-sm ms-2 d-none">↑ Teilen</button>
 {% endif %}
 
 {% if graph_enabled %}
@@ -265,6 +266,34 @@ saveFilenameBtn.addEventListener('click', async () => {
     saveFilenameBtn.textContent = '✓ Speichern';
   }
 });
+</script>
+{% endif %}
+
+{% if can_open %}
+<script>
+const shareBtn = document.getElementById('shareBtn');
+// Only show if Web Share API supports files (iOS Safari, Android Chrome)
+if (shareBtn && navigator.canShare) {
+  shareBtn.classList.remove('d-none');
+  shareBtn.addEventListener('click', async () => {
+    shareBtn.disabled = true;
+    shareBtn.textContent = '…';
+    try {
+      const resp = await fetch('/pdf/{{ doc.id }}');
+      if (!resp.ok) throw new Error('PDF konnte nicht geladen werden');
+      const blob = await resp.blob();
+      const filename = '{{ (doc.new_filename or "document") | e }}.pdf';
+      const file = new File([blob], filename, { type: 'application/pdf' });
+      if (!navigator.canShare({ files: [file] })) throw new Error('Teilen nicht unterstützt');
+      await navigator.share({ files: [file], title: filename });
+    } catch (e) {
+      if (e.name !== 'AbortError') alert('Fehler: ' + e.message);
+    } finally {
+      shareBtn.disabled = false;
+      shareBtn.textContent = '↑ Teilen';
+    }
+  });
+}
 </script>
 {% endif %}
 
