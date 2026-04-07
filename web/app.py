@@ -345,7 +345,9 @@ def open_pdf(doc_id: int):
         abort(404)
     # Resolve and verify path stays within ARCHIVE_ROOT (prevents path traversal)
     pdf_path = (_ARCHIVE_ROOT / _local_onedrive_path(doc["onedrive_path"])).resolve()
-    if not str(pdf_path).startswith(str(_ARCHIVE_ROOT)):
+    try:
+        pdf_path.relative_to(_ARCHIVE_ROOT)
+    except ValueError:
         abort(403)
     if not pdf_path.is_file():
         abort(404)
