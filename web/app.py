@@ -299,32 +299,23 @@ def rename_document(doc_id: int):
         return jsonify({"error": "Graph API not configured on this server"}), 503
 
     try:
-        full_path = _full_onedrive_path(doc["onedrive_path"])
-        print(f"[rename] doc onedrive_path={doc['onedrive_path']!r}", flush=True)
-        print(f"[rename] resolved full_path={full_path!r}", flush=True)
-        print(f"[rename] new_name_with_ext={new_name_with_ext!r}", flush=True)
-
-        item = graph.get_item_by_path(full_path)
+        item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
         item_id = item["id"]
-        item_name = item.get("name")
         parent_id = item["parentReference"]["id"]
-        print(f"[rename] found item id={item_id!r} name={item_name!r} parent_id={parent_id!r}", flush=True)
 
         result = graph.move_and_rename(item_id, new_name_with_ext, parent_id)
         final_name = result.get("name", new_name_with_ext)
-        print(f"[rename] Graph result name={final_name!r}", flush=True)
         final_stem = final_name[:-4] if final_name.lower().endswith(".pdf") else final_name
 
         old_path = doc["onedrive_path"]
         parent_path = old_path.rsplit("/", 1)[0] if "/" in old_path else ""
         new_onedrive_path = f"{parent_path}/{final_name}" if parent_path else final_name
-        print(f"[rename] updating DB: new_filename={final_stem!r} onedrive_path={new_onedrive_path!r}", flush=True)
 
         db_module.update_document(doc_id, new_filename=final_stem, onedrive_path=new_onedrive_path)
 
         return jsonify({"new_filename": final_stem, "onedrive_path": new_onedrive_path})
     except Exception as e:
-        print(f"[rename] error: {e}", flush=True)
+        app.logger.error(f"Rename {doc_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
