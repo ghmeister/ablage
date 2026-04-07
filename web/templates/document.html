@@ -63,15 +63,54 @@
           <tbody>
             <tr>
               <th class="text-muted fw-normal ps-0" style="width:40%">Datum</th>
-              <td>{{ doc.document_date or '–' }}</td>
+              <td>
+                <span class="meta-display" id="display-document_date">{{ doc.document_date or '–' }}</span>
+                {% if graph_enabled %}
+                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline meta-edit-btn"
+                        data-field="document_date" data-value="{{ doc.document_date or '' }}"
+                        title="Bearbeiten">✎</button>
+                <span class="meta-edit-wrap d-none" id="edit-document_date">
+                  <input type="date" class="form-control form-control-sm d-inline-block mt-1"
+                         id="input-document_date" value="{{ doc.document_date or '' }}" style="max-width:180px">
+                  <button class="btn btn-sm btn-success mt-1 meta-save-btn" data-field="document_date">✓</button>
+                  <button class="btn btn-sm btn-outline-secondary mt-1 meta-cancel-btn" data-field="document_date">✕</button>
+                </span>
+                {% endif %}
+              </td>
             </tr>
             <tr>
               <th class="text-muted fw-normal ps-0">Absender</th>
-              <td>{{ doc.sender or doc.company or '–' }}</td>
+              <td>
+                <span class="meta-display" id="display-sender">{{ doc.sender or doc.company or '–' }}</span>
+                {% if graph_enabled %}
+                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline meta-edit-btn"
+                        data-field="sender" data-value="{{ doc.sender or '' }}"
+                        title="Bearbeiten">✎</button>
+                <span class="meta-edit-wrap d-none" id="edit-sender">
+                  <input type="text" class="form-control form-control-sm d-inline-block mt-1"
+                         id="input-sender" value="{{ doc.sender or '' }}" style="max-width:280px">
+                  <button class="btn btn-sm btn-success mt-1 meta-save-btn" data-field="sender">✓</button>
+                  <button class="btn btn-sm btn-outline-secondary mt-1 meta-cancel-btn" data-field="sender">✕</button>
+                </span>
+                {% endif %}
+              </td>
             </tr>
             <tr>
               <th class="text-muted fw-normal ps-0">Empfänger</th>
-              <td>{{ doc.recipient or '–' }}</td>
+              <td>
+                <span class="meta-display" id="display-recipient">{{ doc.recipient or '–' }}</span>
+                {% if graph_enabled %}
+                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline meta-edit-btn"
+                        data-field="recipient" data-value="{{ doc.recipient or '' }}"
+                        title="Bearbeiten">✎</button>
+                <span class="meta-edit-wrap d-none" id="edit-recipient">
+                  <input type="text" class="form-control form-control-sm d-inline-block mt-1"
+                         id="input-recipient" value="{{ doc.recipient or '' }}" style="max-width:280px">
+                  <button class="btn btn-sm btn-success mt-1 meta-save-btn" data-field="recipient">✓</button>
+                  <button class="btn btn-sm btn-outline-secondary mt-1 meta-cancel-btn" data-field="recipient">✕</button>
+                </span>
+                {% endif %}
+              </td>
             </tr>
             <tr>
               <th class="text-muted fw-normal ps-0">Erfasst am</th>
@@ -224,6 +263,55 @@ saveTypeBtn.addEventListener('click', async () => {
     saveTypeBtn.disabled = false;
     saveTypeBtn.textContent = '✓';
   }
+});
+
+// ---------- Metadata fields (date, sender, recipient) ----------
+document.querySelectorAll('.meta-edit-btn').forEach(btn => {
+  const field = btn.dataset.field;
+  btn.addEventListener('click', () => {
+    document.getElementById(`display-${field}`).classList.add('d-none');
+    btn.classList.add('d-none');
+    document.getElementById(`edit-${field}`).classList.remove('d-none');
+    document.getElementById(`input-${field}`).focus();
+  });
+});
+document.querySelectorAll('.meta-cancel-btn').forEach(btn => {
+  const field = btn.dataset.field;
+  btn.addEventListener('click', () => {
+    document.getElementById(`edit-${field}`).classList.add('d-none');
+    document.getElementById(`display-${field}`).classList.remove('d-none');
+    document.querySelector(`.meta-edit-btn[data-field="${field}"]`).classList.remove('d-none');
+  });
+});
+document.querySelectorAll('.meta-save-btn').forEach(btn => {
+  const field = btn.dataset.field;
+  btn.addEventListener('click', async () => {
+    const input = document.getElementById(`input-${field}`);
+    const value = input.value.trim();
+    btn.disabled = true;
+    const orig = btn.textContent;
+    btn.textContent = '…';
+    try {
+      const resp = await fetch(`/api/documents/${DOC_ID}/metadata`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({[field]: value}),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || resp.statusText);
+      const display = document.getElementById(`display-${field}`);
+      display.textContent = value || '–';
+      display.classList.remove('d-none');
+      document.getElementById(`edit-${field}`).classList.add('d-none');
+      document.querySelector(`.meta-edit-btn[data-field="${field}"]`).classList.remove('d-none');
+      showToast(true, 'Gespeichert.');
+    } catch(e) {
+      showToast(false, `Fehler: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = orig;
+    }
+  });
 });
 
 // ---------- Filename edit ----------

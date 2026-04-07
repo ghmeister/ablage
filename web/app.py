@@ -321,6 +321,19 @@ def rename_document(doc_id: int):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/documents/<int:doc_id>/metadata", methods=["POST"])
+def update_metadata(doc_id: int):
+    data = request.get_json(force=True) or {}
+    allowed = {"document_date", "sender", "recipient"}
+    updates = {k: (data.get(k) or "").strip() or None for k in allowed if k in data}
+    if not updates:
+        return jsonify({"error": "No valid fields provided"}), 400
+    if db_module.get_document(doc_id) is None:
+        return jsonify({"error": "not found"}), 404
+    db_module.update_document(doc_id, **updates)
+    return jsonify(updates)
+
+
 @app.route("/pdf/<int:doc_id>")
 def open_pdf(doc_id: int):
     if _ARCHIVE_ROOT is None:
