@@ -8,55 +8,72 @@
 </div>
 
 {# ── Search / Filter Form ─────────────────────────────────────────── #}
-<form method="get" action="/" class="card card-body mb-4 bg-white shadow-sm">
-  <div class="row g-2 align-items-end">
+<form method="get" action="/" id="filterForm">
 
-    <div class="col-12 col-md-4">
-      <label class="form-label fw-semibold small mb-1">Volltextsuche</label>
-      <input type="text" name="q" value="{{ query }}" class="form-control"
-             placeholder="Stichwort, Firma, Inhalt …" autofocus>
-    </div>
-
-    <div class="col-6 col-md-2">
-      <label class="form-label fw-semibold small mb-1">Dokumenttyp</label>
-      <select name="type" class="form-select">
-        <option value="">Alle Typen</option>
-        {% for t in doc_types %}
-        <option value="{{ t }}" {% if doc_type == t %}selected{% endif %}>
-          {{ t | type_label }}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="col-6 col-md-1">
-      <label class="form-label fw-semibold small mb-1">Jahr</label>
-      <select name="year" class="form-select">
-        <option value="">Alle</option>
-        {% for y in years %}
-        <option value="{{ y }}" {% if year == y %}selected{% endif %}>{{ y }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="col-12 col-md-3">
-      <label class="form-label fw-semibold small mb-1">Absender</label>
-      <select name="sender" class="form-select">
-        <option value="">Alle Absender</option>
-        {% for s in senders %}
-        <option value="{{ s }}" {% if sender == s %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    <div class="col-12 col-md-2 d-flex gap-2 align-items-end">
-      <button type="submit" class="btn btn-primary flex-grow-1">Suchen</button>
-      {% if query or doc_type or year or sender %}
-      <a href="/" class="btn btn-outline-secondary" title="Filter zurücksetzen">✕</a>
-      {% endif %}
-    </div>
-
+  {# Full-text search always visible #}
+  <div class="input-group mb-2">
+    <input type="text" name="q" value="{{ query }}" class="form-control"
+           placeholder="Stichwort, Firma, Inhalt …" autofocus>
+    {% if query or doc_type or year or sender %}
+    <a href="/" class="btn btn-outline-secondary" title="Filter zurücksetzen">✕</a>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">Suchen</button>
   </div>
+
+  {# Filter toggle on mobile #}
+  <div class="mb-3">
+    <button class="btn btn-outline-secondary btn-sm d-md-none w-100"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#filterPanel"
+            aria-expanded="{{ 'true' if (doc_type or year or sender) else 'false' }}"
+            aria-controls="filterPanel">
+      Filter {% if doc_type or year or sender %}<span class="badge bg-primary ms-1">aktiv</span>{% endif %}
+    </button>
+
+    <div class="collapse {% if doc_type or year or sender %}show{% endif %} d-md-block" id="filterPanel">
+      <div class="card card-body bg-white shadow-sm mt-2 mt-md-0 border-0 px-0 pt-0 pb-0">
+        <div class="row g-2 align-items-end">
+          <div class="col-6 col-md-2">
+            <label class="form-label fw-semibold small mb-1">Dokumenttyp</label>
+            <select name="type" class="form-select form-select-sm">
+              <option value="">Alle Typen</option>
+              {% for t in doc_types %}
+              <option value="{{ t }}" {% if doc_type == t %}selected{% endif %}>
+                {{ t | type_label }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-6 col-md-1">
+            <label class="form-label fw-semibold small mb-1">Jahr</label>
+            <select name="year" class="form-select form-select-sm">
+              <option value="">Alle</option>
+              {% for y in years %}
+              <option value="{{ y }}" {% if year == y %}selected{% endif %}>{{ y }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label fw-semibold small mb-1">Absender</label>
+            <select name="sender" class="form-select form-select-sm">
+              <option value="">Alle Absender</option>
+              {% for s in senders %}
+              <option value="{{ s }}" {% if sender == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-2 d-none d-md-block">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Anwenden</button>
+          </div>
+          <div class="col-12 d-md-none">
+            <button type="submit" class="btn btn-primary btn-sm w-100">Filter anwenden</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </form>
 
 {# ── Active filters summary ──────────────────────────────────────── #}
@@ -73,7 +90,9 @@
 
 {# ── Results ─────────────────────────────────────────────────────── #}
 {% if rows %}
-<div class="table-responsive shadow-sm rounded">
+
+{# Desktop: table #}
+<div class="d-none d-md-block table-responsive shadow-sm rounded">
   <table class="table table-hover table-sm bg-white mb-0 align-middle">
     {%- macro sort_th(label, col, width="") %}
       {%- set active = (sort_by == col) %}
@@ -121,6 +140,28 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+{# Mobile: card list #}
+<div class="d-md-none d-flex flex-column gap-2">
+  {% for row in rows %}
+  <a href="/document/{{ row.id }}" class="text-decoration-none text-dark">
+    <div class="card doc-card shadow-sm">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <span class="doc-filename">{{ row.new_filename }}</span>
+          <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
+            {{ row.document_type | type_label }}
+          </span>
+        </div>
+        <div class="d-flex justify-content-between mt-1">
+          <span class="small text-muted">{{ row.sender or row.company or '–' }}</span>
+          <span class="small text-muted">{{ row.document_date or '–' }}</span>
+        </div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
 </div>
 
 {# ── Pagination ───────────────────────────────────────────────────── #}

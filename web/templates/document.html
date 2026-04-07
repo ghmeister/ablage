@@ -37,7 +37,7 @@
           {{ doc.document_type | type_label }}
         </span>
         {% if graph_enabled %}
-        <button class="btn btn-sm btn-outline-light py-0 px-1 ms-1" id="editTypeBtn" title="Kategorie ändern" style="font-size:0.75rem">✎</button>
+        <button class="btn btn-sm btn-outline-light ms-1 btn-edit-inline" id="editTypeBtn" title="Kategorie ändern">✎</button>
         {% endif %}
       </span>
       {% if graph_enabled %}
@@ -112,7 +112,7 @@
               <td class="fw-semibold small">
                 {% if graph_enabled %}
                 <span id="filenameDisplay">{{ doc.new_filename or '–' }}</span>
-                <button class="btn btn-sm btn-outline-secondary py-0 px-1 ms-1" id="editFilenameBtn" title="Umbenennen" style="font-size:0.72rem">✎</button>
+                <button class="btn btn-sm btn-outline-secondary ms-1 btn-edit-inline" id="editFilenameBtn" title="Umbenennen">✎</button>
                 <span id="filenameEditWrap" class="d-none">
                   <input type="text" class="form-control form-control-sm d-inline-block mt-1"
                          id="filenameInput" value="{{ doc.new_filename or '' }}" style="max-width:320px">
