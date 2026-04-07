@@ -185,7 +185,7 @@
 
     <li class="page-item {% if page <= 1 %}disabled{% endif %}">
       <a class="page-link"
-         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&page={{ page - 1 }}">
+         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&sort={{ sort_by|qp }}&order={{ sort_order|qp }}&page={{ page - 1 }}">
         &laquo;
       </a>
     </li>
@@ -200,7 +200,7 @@
     {% for p in range(start_p, end_p + 1) %}
     <li class="page-item {% if p == page %}active{% endif %}">
       <a class="page-link"
-         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&page={{ p }}">
+         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&sort={{ sort_by|qp }}&order={{ sort_order|qp }}&page={{ p }}">
         {{ p }}
       </a>
     </li>
@@ -212,7 +212,7 @@
 
     <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
       <a class="page-link"
-         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&page={{ page + 1 }}">
+         href="/?q={{ query|qp }}&type={{ doc_type|qp }}&year={{ year|qp }}&sender={{ sender|qp }}&sort={{ sort_by|qp }}&order={{ sort_order|qp }}&page={{ page + 1 }}">
         &raquo;
       </a>
     </li>
