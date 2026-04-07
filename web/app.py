@@ -202,6 +202,8 @@ def document(doc_id: int) -> str:
         and local_path
         and (_ARCHIVE_ROOT / local_path).is_file()
     )
+    # Preserve search parameters so "back" returns to the filtered results
+    back_url = request.referrer or "/"
     return render_template(
         "document.html",
         doc=doc,
@@ -209,6 +211,7 @@ def document(doc_id: int) -> str:
         graph_enabled=graph_enabled,
         type_labels=TYPE_LABELS,
         type_colors=TYPE_COLORS,
+        back_url=back_url,
     )
 
 

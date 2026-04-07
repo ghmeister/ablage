@@ -152,7 +152,7 @@
   </div>
 </div>
 
-<a href="/" class="btn btn-outline-secondary btn-sm">&larr; Zurück zur Suche</a>
+<a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">&larr; Zurück zur Suche</a>
 {% if can_open %}
 <a href="/pdf/{{ doc.id }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
 {% endif %}
