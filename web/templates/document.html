@@ -213,6 +213,8 @@
 <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">&larr; Zurück zur Suche</a>
 {% if can_open %}
 <a href="/pdf/{{ doc.id }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
+{% endif %}
+{% if graph_enabled or can_open %}
 <button id="shareBtn" class="btn btn-outline-primary btn-sm ms-2 d-none">↑ Teilen</button>
 {% endif %}
 {% if graph_enabled %}
@@ -405,7 +407,6 @@ saveFilenameBtn.addEventListener('click', async () => {
 </script>
 {% endif %}
 
-{% if can_open %}
 <script>
 const shareBtn = document.getElementById('shareBtn');
 if (shareBtn && navigator.canShare) {
@@ -414,10 +415,18 @@ if (shareBtn && navigator.canShare) {
     shareBtn.disabled = true;
     shareBtn.textContent = '…';
     try {
-      const resp = await fetch('/pdf/{{ doc.id }}');
-      if (!resp.ok) throw new Error('PDF konnte nicht geladen werden');
-      const blob = await resp.blob();
       const filename = '{{ (doc.new_filename or "document") | e }}.pdf';
+      // Try local first, fall back to Graph download
+      const urls = [
+        {% if can_open %}'/pdf/{{ doc.id }}',{% endif %}
+        '/api/documents/{{ doc.id }}/download',
+      ];
+      let blob = null;
+      for (const url of urls) {
+        const resp = await fetch(url);
+        if (resp.ok) { blob = await resp.blob(); break; }
+      }
+      if (!blob) throw new Error('PDF konnte nicht geladen werden');
       const file = new File([blob], filename, { type: 'application/pdf' });
       if (!navigator.canShare({ files: [file] })) throw new Error('Teilen nicht unterstützt');
       await navigator.share({ files: [file], title: filename });
@@ -430,6 +439,5 @@ if (shareBtn && navigator.canShare) {
   });
 }
 </script>
-{% endif %}
 
 {% endblock %}

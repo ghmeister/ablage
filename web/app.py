@@ -425,6 +425,31 @@ def bulk_delete():
     return jsonify({"deleted": deleted, "errors": errors})
 
 
+@app.route("/api/documents/<int:doc_id>/download")
+def download_pdf(doc_id: int):
+    """Download a PDF from OneDrive via Graph API — used for sharing on iOS."""
+    doc = db_module.get_document(doc_id)
+    if doc is None:
+        abort(404)
+    graph = _get_graph()
+    if graph is None:
+        abort(503, "Graph API not configured")
+    if not doc.get("onedrive_path"):
+        abort(404, "No OneDrive path stored for this document")
+    try:
+        item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
+        content = graph.download_file(item["id"])
+    except Exception as e:
+        abort(502, f"OneDrive download failed: {e}")
+    filename = (doc.get("new_filename") or "document") + ".pdf"
+    from flask import Response
+    return Response(
+        content,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=\"{filename}\""},
+    )
+
+
 @app.route("/pdf/<int:doc_id>")
 def open_pdf(doc_id: int):
     if _ARCHIVE_ROOT is None:
