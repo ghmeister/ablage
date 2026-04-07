@@ -171,20 +171,16 @@
       <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark d-block">
         <span class="doc-filename">{{ row.new_filename }}</span>
       </a>
-      <div class="d-flex justify-content-between align-items-center mt-1">
-        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
-          <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
-            {{ row.document_type | type_label }}
-          </span>
-          <span class="small text-muted text-truncate min-w-0">{{ row.sender or row.company or '–' }}</span>
-        </div>
-        <div class="d-flex align-items-center gap-1 flex-shrink-0">
-          <span class="small text-muted">{{ row.document_date or '–' }}</span>
-          {% if archive_configured %}
-          <a href="/pdf/{{ row.id }}" target="_blank"
-             class="btn btn-outline-secondary btn-sm py-0 px-1 pdf-btn-portrait-hidden" title="PDF öffnen">&#128196;</a>
-          {% endif %}
-        </div>
+      <div class="d-flex align-items-center gap-2 mt-1">
+        <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
+          {{ row.document_type | type_label }}
+        </span>
+        <span class="small text-muted text-truncate flex-grow-1 min-w-0">{{ row.sender or row.company or '–' }}</span>
+        <span class="small text-muted flex-shrink-0">{{ row.document_date or '–' }}</span>
+        {% if archive_configured %}
+        <a href="/pdf/{{ row.id }}" target="_blank"
+           class="btn btn-outline-secondary btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden" title="PDF öffnen">&#128196;</a>
+        {% endif %}
       </div>
     </div>
   </div>
