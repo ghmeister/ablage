@@ -425,6 +425,30 @@ def bulk_delete():
     return jsonify({"deleted": deleted, "errors": errors})
 
 
+@app.route("/api/documents/<int:doc_id>/folder-url")
+def folder_url(doc_id: int):
+    """Return the OneDrive web URL of the folder containing the document."""
+    doc = db_module.get_document(doc_id)
+    if doc is None:
+        return jsonify({"error": "not found"}), 404
+    graph = _get_graph()
+    if graph is None:
+        return jsonify({"error": "Graph API not configured"}), 503
+    if not doc.get("onedrive_path"):
+        return jsonify({"error": "No OneDrive path stored"}), 422
+    try:
+        item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
+        # Get the parent folder item
+        parent_id = item.get("parentReference", {}).get("id")
+        if not parent_id:
+            return jsonify({"error": "Parent folder not found"}), 404
+        from urllib.parse import quote as _quote
+        parent = graph.request("GET", f"{graph.drive_base}/items/{parent_id}").json()
+        return jsonify({"url": parent.get("webUrl")})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/documents/<int:doc_id>/download")
 def download_pdf(doc_id: int):
     """Download a PDF from OneDrive via Graph API — used for sharing on iOS."""

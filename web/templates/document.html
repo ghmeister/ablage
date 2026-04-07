@@ -218,6 +218,7 @@
 <button id="shareBtn" class="btn btn-outline-primary btn-sm ms-2">↑ Teilen</button>
 {% endif %}
 {% if graph_enabled %}
+<button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">📂 Ordner</button>
 <button id="deleteBtn" class="btn btn-outline-danger btn-sm ms-2">🗑 Löschen</button>
 {% endif %}
 
@@ -234,6 +235,24 @@ function showToast(success, msg) {
   const el = document.getElementById(id);
   bootstrap.Toast.getOrCreateInstance(el, {delay: 3500}).show();
 }
+
+// ---------- Open folder in OneDrive ----------
+document.getElementById('folderBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('folderBtn');
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const resp = await fetch(`/api/documents/${DOC_ID}/folder-url`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    window.open(data.url, '_blank');
+  } catch(e) {
+    showToast(false, `Fehler: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📂 Ordner';
+  }
+});
 
 // ---------- Delete ----------
 document.getElementById('deleteBtn').addEventListener('click', async () => {
