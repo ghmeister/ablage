@@ -325,14 +325,26 @@ def open_pdf(doc_id: int):
     if doc is None:
         abort(404)
 
-    # Prefer Graph cloud URL — works instantly, no local sync delay
+    # Prefer Graph cloud — works instantly, no local sync delay.
+    # Proxy through Flask so we can set Content-Disposition: inline,
+    # which opens the PDF in the browser instead of triggering a download.
     graph = _get_graph()
     if graph and doc.get("onedrive_path"):
         try:
             item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
             download_url = item.get("@microsoft.graph.downloadUrl")
             if download_url:
-                return redirect(download_url)
+                import io
+                import requests as _requests
+                resp = _requests.get(download_url, timeout=30)
+                resp.raise_for_status()
+                filename = doc.get("new_filename", "document") + ".pdf"
+                return send_file(
+                    io.BytesIO(resp.content),
+                    mimetype="application/pdf",
+                    as_attachment=False,
+                    download_name=filename,
+                )
         except Exception as e:
             app.logger.warning(f"Cloud PDF fetch failed, falling back to local: {e}")
 
