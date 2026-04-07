@@ -66,7 +66,7 @@ version: "3.9"
 
 services:
   ablage:
-    image: ghcr.io/minenmaster/ablage:latest
+    image: ghcr.io/minenmaster/pdf-renamer:latest
     restart: unless-stopped
     environment:
       - OPENAI_API_KEY=sk-...
@@ -87,7 +87,7 @@ services:
       - doc_data:/data
 
   ablage-web:
-    image: ghcr.io/minenmaster/ablage:latest
+    image: ghcr.io/minenmaster/pdf-renamer:latest
     restart: unless-stopped
     command: ["python", "web/app.py"]
     ports:

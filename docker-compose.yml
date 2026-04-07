@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-    pdf-renamer:
+    ablage:
         image: ghcr.io/minenmaster/pdf-renamer:latest
         restart: unless-stopped
         environment:
@@ -34,7 +34,7 @@ services:
             # Optional: mount custom classification rules
             # - ./classification_rules.yaml:/app/classification_rules.yaml:ro
 
-    pdf-renamer-web:
+    ablage-web:
         image: ghcr.io/minenmaster/pdf-renamer:latest
         restart: unless-stopped
         command: ["python", "web/app.py"]
