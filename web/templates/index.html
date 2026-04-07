@@ -176,7 +176,7 @@
           <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
             {{ row.document_type | type_label }}
           </span>
-          <span class="small text-muted text-truncate">{{ row.sender or row.company or '–' }}</span>
+          <span class="small text-muted text-truncate min-w-0">{{ row.sender or row.company or '–' }}</span>
         </div>
         <div class="d-flex align-items-center gap-1 flex-shrink-0">
           <span class="small text-muted">{{ row.document_date or '–' }}</span>
