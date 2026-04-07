@@ -128,6 +128,7 @@
         {{ sort_th("Empfänger", "recipient") }}
         {{ sort_th("Ordner",    "destination_folder") }}
         {{ sort_th("Erfasst",   "scan_timestamp",     "90px") }}
+        {% if archive_configured %}<th style="width:44px"></th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -150,6 +151,12 @@
         <td class="small text-muted text-nowrap">
           {{ row.scan_timestamp[:10] if row.scan_timestamp else '–' }}
         </td>
+        {% if archive_configured %}
+        <td onclick="event.stopPropagation()">
+          <a href="/pdf/{{ row.id }}" target="_blank"
+             class="btn btn-outline-secondary btn-sm py-0 px-1" title="PDF öffnen">&#128196;</a>
+        </td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
@@ -159,22 +166,28 @@
 {# Mobile: card list #}
 <div class="d-md-none d-flex flex-column gap-2">
   {% for row in rows %}
-  <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark">
-    <div class="card doc-card shadow-sm">
-      <div class="card-body py-2 px-3">
-        <div class="d-flex justify-content-between align-items-start gap-2">
+  <div class="card doc-card shadow-sm">
+    <div class="card-body py-2 px-3">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark flex-grow-1 min-w-0">
           <span class="doc-filename">{{ row.new_filename }}</span>
-          <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
+        </a>
+        <div class="d-flex align-items-center gap-1 flex-shrink-0">
+          {% if archive_configured %}
+          <a href="/pdf/{{ row.id }}" target="_blank"
+             class="btn btn-outline-secondary btn-sm py-0 px-1" title="PDF öffnen">&#128196;</a>
+          {% endif %}
+          <span class="badge badge-type bg-{{ row.document_type | type_color }}">
             {{ row.document_type | type_label }}
           </span>
         </div>
-        <div class="d-flex justify-content-between mt-1">
-          <span class="small text-muted">{{ row.sender or row.company or '–' }}</span>
-          <span class="small text-muted">{{ row.document_date or '–' }}</span>
-        </div>
+      </div>
+      <div class="d-flex justify-content-between mt-1">
+        <span class="small text-muted">{{ row.sender or row.company or '–' }}</span>
+        <span class="small text-muted">{{ row.document_date or '–' }}</span>
       </div>
     </div>
-  </a>
+  </div>
   {% endfor %}
 </div>
 

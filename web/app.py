@@ -185,6 +185,7 @@ def index() -> str:
         type_colors=TYPE_COLORS,
         sort_by=sort_by,
         sort_order=sort_order,
+        archive_configured=_ARCHIVE_ROOT is not None,
     )
 
 
