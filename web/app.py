@@ -195,13 +195,13 @@ def document(doc_id: int) -> str:
     doc = db_module.get_document(doc_id)
     if doc is None:
         abort(404)
+    graph_enabled = bool(os.getenv("TENANT_ID") and os.getenv("CLIENT_ID"))
     # Button shown if Graph is available (cloud), or local file exists (fallback)
     local_path = _local_onedrive_path(doc.get("onedrive_path") or "")
     can_open = bool(doc.get("onedrive_path")) and (
         graph_enabled
         or bool(_ARCHIVE_ROOT and local_path and (_ARCHIVE_ROOT / local_path).is_file())
     )
-    graph_enabled = bool(os.getenv("TENANT_ID") and os.getenv("CLIENT_ID"))
     return render_template(
         "document.html",
         doc=doc,
