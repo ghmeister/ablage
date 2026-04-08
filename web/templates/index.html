@@ -12,6 +12,7 @@
   <div class="d-flex align-items-center gap-2">
     <span class="text-muted small">{{ total }} Dokument{% if total != 1 %}e{% endif %}</span>
     {% if graph_enabled %}
+    <button id="bulkTaxBtn" class="btn btn-outline-warning btn-sm d-none">★ Steuerrelevant (<span id="selCountTax">0</span>)</button>
     <button id="bulkDeleteBtn" class="btn btn-outline-danger btn-sm d-none">🗑 Auswahl löschen (<span id="selCount">0</span>)</button>
     {% endif %}
   </div>
@@ -280,27 +281,54 @@
 
 {% if graph_enabled and rows %}
 <script>
-const selectAll    = document.getElementById('selectAll');
+const selectAll     = document.getElementById('selectAll');
 const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
-const selCountEl   = document.getElementById('selCount');
+const bulkTaxBtn    = document.getElementById('bulkTaxBtn');
+const selCountEl    = document.getElementById('selCount');
+const selCountTaxEl = document.getElementById('selCountTax');
 
-function updateBulkBtn() {
+function updateBulkBtns() {
   const checked = document.querySelectorAll('.row-check:checked');
   const n = checked.length;
   selCountEl.textContent = n;
+  selCountTaxEl.textContent = n;
   bulkDeleteBtn.classList.toggle('d-none', n === 0);
+  bulkTaxBtn.classList.toggle('d-none', n === 0);
 }
 
 selectAll && selectAll.addEventListener('change', () => {
   document.querySelectorAll('.row-check').forEach(cb => cb.checked = selectAll.checked);
-  updateBulkBtn();
+  updateBulkBtns();
 });
 
 document.querySelectorAll('.row-check').forEach(cb => {
   cb.addEventListener('change', () => {
     if (selectAll) selectAll.checked = [...document.querySelectorAll('.row-check')].every(c => c.checked);
-    updateBulkBtn();
+    updateBulkBtns();
   });
+});
+
+bulkTaxBtn && bulkTaxBtn.addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('.row-check:checked')].map(cb => parseInt(cb.value));
+  if (!ids.length) return;
+
+  bulkTaxBtn.disabled = true;
+  bulkTaxBtn.textContent = '…';
+
+  try {
+    const resp = await fetch('/api/documents/bulk-tax-relevant', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids, tax_relevant: true}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    window.location.reload();
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+    bulkTaxBtn.disabled = false;
+    bulkTaxBtn.innerHTML = '★ Steuerrelevant (<span id="selCountTax">' + ids.length + '</span>)';
+  }
 });
 
 bulkDeleteBtn && bulkDeleteBtn.addEventListener('click', async () => {

@@ -428,6 +428,18 @@ def delete_document(doc_id: int):
     return jsonify({"deleted": doc_id})
 
 
+@app.route("/api/documents/bulk-tax-relevant", methods=["POST"])
+def bulk_tax_relevant():
+    data = request.get_json(force=True) or {}
+    ids = [int(i) for i in (data.get("ids") or []) if str(i).isdigit()]
+    value = 1 if data.get("tax_relevant", True) else 0
+    if not ids:
+        return jsonify({"error": "ids required"}), 400
+    for doc_id in ids:
+        db_module.update_document(doc_id, tax_relevant=value)
+    return jsonify({"updated": ids, "tax_relevant": bool(value)})
+
+
 @app.route("/api/documents/bulk-delete", methods=["POST"])
 def bulk_delete():
     data = request.get_json(force=True) or {}
