@@ -200,6 +200,7 @@ class AblageBot:
                 keywords=", ".join(metadata.get("keywords") or []),
                 extracted_text=(pdf_text[:_MAX_TEXT_STORE] if pdf_text else None),
                 matched_rule=matched_rule,
+                tax_relevant=1 if metadata.get("tax_relevant") else 0,
             )
             print(f"Indexed   : {final_name}")
         except Exception as e:

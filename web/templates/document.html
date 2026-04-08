@@ -218,6 +218,39 @@
 <button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">☁ OneDrive</button>
 <button id="deleteBtn" class="btn btn-outline-danger btn-sm ms-2">🗑 Löschen</button>
 {% endif %}
+<button id="taxBtn"
+        class="btn btn-sm ms-2 {% if doc.tax_relevant %}btn-warning{% else %}btn-outline-secondary{% endif %}"
+        title="Steuerrelevanz umschalten">
+  {% if doc.tax_relevant %}★ Steuerrelevant{% else %}☆ Steuerrelevant{% endif %}
+</button>
+
+<script>
+// ---------- Tax relevance toggle (always available) ----------
+(function() {
+  const taxBtn = document.getElementById('taxBtn');
+  let taxRelevant = {{ 'true' if doc.tax_relevant else 'false' }};
+
+  taxBtn.addEventListener('click', async () => {
+    taxBtn.disabled = true;
+    const newValue = !taxRelevant;
+    try {
+      const resp = await fetch(`/api/documents/{{ doc.id }}/tax-relevant`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({tax_relevant: newValue}),
+      });
+      if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
+      taxRelevant = newValue;
+      taxBtn.className = `btn btn-sm ms-2 ${newValue ? 'btn-warning' : 'btn-outline-secondary'}`;
+      taxBtn.textContent = newValue ? '★ Steuerrelevant' : '☆ Steuerrelevant';
+    } catch(e) {
+      alert('Fehler: ' + e.message);
+    } finally {
+      taxBtn.disabled = false;
+    }
+  });
+})();
+</script>
 
 {% if graph_enabled %}
 <script>

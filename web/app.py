@@ -367,6 +367,37 @@ def update_metadata(doc_id: int):
     return jsonify(updates)
 
 
+@app.route("/steuern")
+def steuern():
+    year = request.args.get("year", "").strip()
+    docs, years = db_module.get_tax_relevant_documents(year or None)
+    # Group by document_type for display
+    from collections import defaultdict
+    groups: dict[str, list] = defaultdict(list)
+    for doc in docs:
+        groups[doc["document_type"] or "other"].append(doc)
+    return render_template(
+        "steuern.html",
+        groups=dict(groups),
+        years=years,
+        year=year,
+        total=len(docs),
+        type_labels=TYPE_LABELS,
+        type_colors=TYPE_COLORS,
+        archive_configured=_ARCHIVE_ROOT is not None,
+    )
+
+
+@app.route("/api/documents/<int:doc_id>/tax-relevant", methods=["POST"])
+def set_tax_relevant(doc_id: int):
+    data = request.get_json(force=True) or {}
+    value = bool(data.get("tax_relevant", False))
+    if db_module.get_document(doc_id) is None:
+        return jsonify({"error": "not found"}), 404
+    db_module.update_document(doc_id, tax_relevant=1 if value else 0)
+    return jsonify({"tax_relevant": value})
+
+
 @app.route("/view/<int:doc_id>")
 def view_pdf(doc_id: int):
     """HTML wrapper with back button — used by PWA to keep navigation working."""

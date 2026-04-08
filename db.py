@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS documents (
     company            TEXT,
     keywords           TEXT,
     extracted_text     TEXT,
-    matched_rule       TEXT
+    matched_rule       TEXT,
+    tax_relevant       INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_doc_type  ON documents(document_type);
@@ -111,6 +112,14 @@ def init_db() -> None:
     conn = _get_connection()
     try:
         conn.executescript(_SCHEMA)
+        # Migration: add tax_relevant column if it doesn't exist yet
+        try:
+            conn.execute(
+                "ALTER TABLE documents ADD COLUMN tax_relevant INTEGER NOT NULL DEFAULT 0"
+            )
+            conn.commit()
+        except Exception:
+            pass  # Column already exists
     finally:
         conn.close()
 
@@ -130,6 +139,7 @@ def insert_document(
     extracted_text: Optional[str] = None,
     matched_rule: Optional[str] = None,
     scan_timestamp: Optional[str] = None,
+    tax_relevant: int = 0,
 ) -> int:
     """Insert a document record and return the new row id."""
     ts = scan_timestamp or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -139,12 +149,12 @@ def insert_document(
             INSERT INTO documents
                 (scan_timestamp, original_filename, new_filename, destination_folder,
                  onedrive_path, document_type, document_date, sender, recipient,
-                 company, keywords, extracted_text, matched_rule)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 company, keywords, extracted_text, matched_rule, tax_relevant)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ts, original_filename, new_filename, destination_folder,
              onedrive_path, document_type, document_date, sender, recipient,
-             company, keywords, extracted_text, matched_rule),
+             company, keywords, extracted_text, matched_rule, tax_relevant),
         )
         return cur.lastrowid
 
@@ -174,6 +184,7 @@ def update_document(doc_id: int, **fields) -> None:
         "new_filename", "document_type", "destination_folder",
         "onedrive_path", "matched_rule",
         "document_date", "sender", "recipient", "company",
+        "tax_relevant",
     }
     updates = {k: v for k, v in fields.items() if k in _allowed}
     if not updates:
@@ -273,6 +284,35 @@ def get_distinct_years() -> list[str]:
             "ORDER BY yr DESC"
         ).fetchall()
     return [r[0] for r in rows if r[0]]
+
+
+def get_tax_relevant_documents(year: Optional[str] = None) -> tuple[list[dict], list[str]]:
+    """
+    Return (docs, years) where docs are all tax_relevant=1 records,
+    optionally filtered by year, sorted by document_type then document_date.
+    years is the list of distinct years with tax-relevant documents (newest first).
+    """
+    with _conn() as conn:
+        year_rows = conn.execute(
+            "SELECT DISTINCT substr(document_date, 1, 4) AS yr "
+            "FROM documents WHERE tax_relevant = 1 AND document_date IS NOT NULL "
+            "ORDER BY yr DESC"
+        ).fetchall()
+        years = [r[0] for r in year_rows if r[0]]
+
+        params: list = []
+        conds = ["tax_relevant = 1"]
+        if year:
+            conds.append("substr(document_date, 1, 4) = ?")
+            params.append(year)
+        where = "WHERE " + " AND ".join(conds)
+        rows = conn.execute(
+            f"SELECT * FROM documents {where} "
+            "ORDER BY document_type ASC, document_date DESC",
+            params,
+        ).fetchall()
+
+    return [dict(r) for r in rows], years
 
 
 def _sanitize_fts_query(query: str) -> str:

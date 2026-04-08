@@ -120,7 +120,15 @@ class AIRenamer:
             f"                  (formal company name or person name), or null\n"
             f"  recipient     — full name of the recipient the document is addressed TO\n"
             f"                  (person name with first+last if available, or organisation), or null\n"
-            f"  keywords      — list of 3-8 lowercase German/English keywords describing the document\n\n"
+            f"  keywords      — list of 3-8 lowercase German/English keywords describing the document\n"
+            f"  tax_relevant  — true if this document is relevant for the Swiss annual tax declaration.\n"
+            f"                  Set to true for: Lohnausweis, Spendenbescheinigung/donation certificate,\n"
+            f"                  Steuerbescheinigung, BVG/pension fund statement, Säule-3a certificate,\n"
+            f"                  home maintenance invoices (Elektriker, Heizung, Fenster, Maler, Sanitär,\n"
+            f"                  Dach, Isolation — any skilled trade working on or in the home),\n"
+            f"                  bank tax documents (Zinsausweis, Steuerausweis), AirBnB income\n"
+            f"                  statements, any document from Steueramt/ESTV.\n"
+            f"                  Set to false for regular invoices, insurance policies, letters, etc.\n\n"
             f"Original filename: {original_filename}\n\n"
             f"PDF Content:\n{truncated_content}\n\n"
             f"Respond with ONLY the JSON object."
@@ -153,6 +161,7 @@ class AIRenamer:
                 "sender": data.get("sender"),
                 "recipient": data.get("recipient"),
                 "keywords": [str(k).lower() for k in (data.get("keywords") or [])],
+                "tax_relevant": bool(data.get("tax_relevant", False)),
             }
 
         except Exception as e:
@@ -219,6 +228,7 @@ class AIRenamer:
                 "sender": data.get("sender"),
                 "recipient": data.get("recipient"),
                 "keywords": [str(k).lower() for k in (data.get("keywords") or [])],
+                "tax_relevant": False,  # filename-only classification can't determine tax relevance
             }
         except Exception as e:
             print(f"classify_from_filename error: {e}")
@@ -233,6 +243,7 @@ class AIRenamer:
             "sender": None,
             "recipient": None,
             "keywords": [],
+            "tax_relevant": False,
         }
 
     def _sanitize_filename(self, filename: str) -> str:
