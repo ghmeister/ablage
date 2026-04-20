@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS documents (
     email_source       INTEGER NOT NULL DEFAULT 0,
     email_from         TEXT,
     email_subject      TEXT,
-    email_date         TEXT
+    email_date         TEXT,
+    email_message_id   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_doc_type  ON documents(document_type);
@@ -123,6 +124,7 @@ def init_db() -> None:
             "ALTER TABLE documents ADD COLUMN email_from TEXT",
             "ALTER TABLE documents ADD COLUMN email_subject TEXT",
             "ALTER TABLE documents ADD COLUMN email_date TEXT",
+            "ALTER TABLE documents ADD COLUMN email_message_id TEXT",
         ]:
             try:
                 conn.execute(migration)
@@ -153,6 +155,7 @@ def insert_document(
     email_from: Optional[str] = None,
     email_subject: Optional[str] = None,
     email_date: Optional[str] = None,
+    email_message_id: Optional[str] = None,
 ) -> int:
     """Insert a document record and return the new row id."""
     ts = scan_timestamp or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -163,13 +166,13 @@ def insert_document(
                 (scan_timestamp, original_filename, new_filename, destination_folder,
                  onedrive_path, document_type, document_date, sender, recipient,
                  company, keywords, extracted_text, matched_rule, tax_relevant,
-                 email_source, email_from, email_subject, email_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 email_source, email_from, email_subject, email_date, email_message_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ts, original_filename, new_filename, destination_folder,
              onedrive_path, document_type, document_date, sender, recipient,
              company, keywords, extracted_text, matched_rule, tax_relevant,
-             email_source, email_from, email_subject, email_date),
+             email_source, email_from, email_subject, email_date, email_message_id),
         )
         return cur.lastrowid
 

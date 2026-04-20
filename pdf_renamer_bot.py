@@ -219,6 +219,7 @@ class AblageBot:
                 email_from=email_context.get("from") if email_context else None,
                 email_subject=email_context.get("subject") if email_context else None,
                 email_date=email_context.get("date") if email_context else None,
+                email_message_id=email_context.get("message_id", "").strip("<>") if email_context else None,
             )
             print(f"Indexed   : {final_name}")
         except Exception as e:
