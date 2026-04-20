@@ -156,6 +156,39 @@
         </table>
       </div>
 
+      {# Email source #}
+      {% if doc.email_source %}
+      <div class="col-12">
+        <div class="border rounded px-3 py-2 bg-light">
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="badge bg-secondary">✉ Per E-Mail erhalten</span>
+          </div>
+          <table class="table table-sm table-borderless mb-0">
+            <tbody>
+              {% if doc.email_from %}
+              <tr>
+                <th class="text-muted fw-normal ps-0" style="width:20%">Von</th>
+                <td class="small text-break">{{ doc.email_from }}</td>
+              </tr>
+              {% endif %}
+              {% if doc.email_subject %}
+              <tr>
+                <th class="text-muted fw-normal ps-0">Betreff</th>
+                <td class="small text-break">{{ doc.email_subject }}</td>
+              </tr>
+              {% endif %}
+              {% if doc.email_date %}
+              <tr>
+                <th class="text-muted fw-normal ps-0">Datum</th>
+                <td class="small">{{ doc.email_date }}</td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
       {# Keywords #}
       {% if doc.keywords %}
       <div class="col-12">

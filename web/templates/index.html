@@ -159,7 +159,7 @@
         <td class="text-nowrap">
           <span class="badge badge-type bg-{{ row.document_type | type_color }}">
             {{ row.document_type | type_label }}
-          </span>{% if row.tax_relevant %} <span title="Steuerrelevant" style="color:#ffc107;font-size:0.75rem">★</span>{% endif %}
+          </span>{% if row.tax_relevant %} <span title="Steuerrelevant" style="color:#ffc107;font-size:0.75rem">★</span>{% endif %}{% if row.email_source %} <span title="Per E-Mail erhalten" style="font-size:0.75rem">✉</span>{% endif %}
         </td>
         <td class="small">{{ row.sender or row.company or '–' }}</td>
         <td class="small">{{ row.recipient or '–' }}</td>
@@ -191,7 +191,7 @@
       <div class="d-flex align-items-center gap-2 mt-1">
         <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
           {{ row.document_type | type_label }}
-        </span>{% if row.tax_relevant %}<span title="Steuerrelevant" style="color:#ffc107;font-size:0.75rem" class="flex-shrink-0">★</span>{% endif %}
+        </span>{% if row.tax_relevant %}<span title="Steuerrelevant" style="color:#ffc107;font-size:0.75rem" class="flex-shrink-0">★</span>{% endif %}{% if row.email_source %}<span title="Per E-Mail erhalten" style="font-size:0.75rem" class="flex-shrink-0">✉</span>{% endif %}
         <span class="small text-muted text-truncate flex-grow-1 min-w-0">{{ row.sender or row.company or '–' }}</span>
         <span class="small text-muted flex-shrink-0">{{ row.document_date or '–' }}</span>
         {% if archive_configured %}
