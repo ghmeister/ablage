@@ -163,7 +163,7 @@
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="badge bg-secondary">✉ Per E-Mail erhalten</span>
             {% if doc.email_message_id %}
-            <a href="https://mail.google.com/mail/u/0/#search/rfc822msgid%3A{{ doc.email_message_id }}"
+            <a href="https://mail.google.com/mail/u/0/#search/rfc822msgid:{{ doc.email_message_id | e }}"
                target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary py-0 px-2"
                style="font-size:0.75rem">In Gmail öffnen ↗</a>
             {% endif %}
