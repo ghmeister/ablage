@@ -19,7 +19,7 @@ class AIRenamer:
         self.client = OpenAI(api_key=self.api_key)
         self.max_filename_length = int(os.getenv('MAX_FILENAME_LENGTH', '100'))
 
-    def analyze_document(self, pdf_content: str, original_filename: str) -> dict:
+    def analyze_document(self, pdf_content: str, original_filename: str, email_context: dict | None = None) -> dict:
         """
         Analyze a PDF and return a filename suggestion plus document metadata
         in a single API call.
@@ -32,6 +32,18 @@ class AIRenamer:
         if not pdf_content or not pdf_content.strip():
             print(f"PDF text empty — classifying from filename: {original_filename}")
             return self.classify_from_filename(original_filename)
+
+        email_context_str = ""
+        if email_context:
+            parts = []
+            if email_context.get("from"):
+                parts.append(f"  From: {email_context['from']}")
+            if email_context.get("subject"):
+                parts.append(f"  Subject: {email_context['subject']}")
+            if email_context.get("date"):
+                parts.append(f"  Date: {email_context['date']}")
+            if parts:
+                email_context_str = "Email context (use to assist classification):\n" + "\n".join(parts) + "\n\n"
 
         max_content_length = 3000
         truncated_content = pdf_content[:max_content_length]
@@ -130,6 +142,7 @@ class AIRenamer:
             f"                  statements, any document from Steueramt/ESTV.\n"
             f"                  Set to false for regular invoices, insurance policies, letters, etc.\n\n"
             f"Original filename: {original_filename}\n\n"
+            f"{email_context_str}"
             f"PDF Content:\n{truncated_content}\n\n"
             f"Respond with ONLY the JSON object."
         )

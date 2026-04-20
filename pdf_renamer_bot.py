@@ -153,8 +153,22 @@ class AblageBot:
         pdf_info = self.pdf_extractor.get_pdf_info_from_bytes(content)
         print(f"Extracted {len(pdf_text)} characters from PDF ({pdf_info.get('num_pages', 'unknown')} pages)")
 
+        # Check for email sidecar uploaded by email-pdf-extractor
+        email_context = None
+        sidecar_item_id = None
+        if parent_path:
+            sidecar_path = f"{parent_path}/{name}.meta.json"
+            try:
+                sidecar_item = self.graph.get_item_by_path(sidecar_path)
+                sidecar_item_id = sidecar_item.get("id")
+                sidecar_bytes = self.graph.download_file(sidecar_item_id)
+                email_context = json.loads(sidecar_bytes.decode("utf-8"))
+                print(f"Email context      : from={email_context.get('from', '')!r}")
+            except Exception:
+                pass  # No sidecar — that's fine
+
         print("\nAnalyzing document with AI...")
-        metadata = self.ai_renamer.analyze_document(pdf_text, Path(name).stem)
+        metadata = self.ai_renamer.analyze_document(pdf_text, Path(name).stem, email_context=email_context)
 
         new_filename = f"{metadata['filename']}.pdf"
         print(f"Suggested filename : {new_filename}")
@@ -201,12 +215,23 @@ class AblageBot:
                 extracted_text=(pdf_text[:_MAX_TEXT_STORE] if pdf_text else None),
                 matched_rule=matched_rule,
                 tax_relevant=1 if metadata.get("tax_relevant") else 0,
+                email_source=1 if email_context else 0,
+                email_from=email_context.get("from") if email_context else None,
+                email_subject=email_context.get("subject") if email_context else None,
+                email_date=email_context.get("date") if email_context else None,
             )
             print(f"Indexed   : {final_name}")
         except Exception as e:
             print(f"Warning   : DB write failed: {e}")
-        finally:
-            _write_status("idle")
+
+        # Delete the sidecar now that it's been consumed
+        if sidecar_item_id:
+            try:
+                self.graph.delete_item(sidecar_item_id)
+            except Exception as e:
+                print(f"Warning   : Could not delete sidecar: {e}")
+
+        _write_status("idle")
 
     # ------------------------------------------------------------------
     # Helpers

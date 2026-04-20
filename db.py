@@ -48,7 +48,11 @@ CREATE TABLE IF NOT EXISTS documents (
     keywords           TEXT,
     extracted_text     TEXT,
     matched_rule       TEXT,
-    tax_relevant       INTEGER NOT NULL DEFAULT 0
+    tax_relevant       INTEGER NOT NULL DEFAULT 0,
+    email_source       INTEGER NOT NULL DEFAULT 0,
+    email_from         TEXT,
+    email_subject      TEXT,
+    email_date         TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_doc_type  ON documents(document_type);
@@ -113,13 +117,18 @@ def init_db() -> None:
     try:
         conn.executescript(_SCHEMA)
         # Migration: add tax_relevant column if it doesn't exist yet
-        try:
-            conn.execute(
-                "ALTER TABLE documents ADD COLUMN tax_relevant INTEGER NOT NULL DEFAULT 0"
-            )
-            conn.commit()
-        except Exception:
-            pass  # Column already exists
+        for migration in [
+            "ALTER TABLE documents ADD COLUMN tax_relevant INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN email_source INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN email_from TEXT",
+            "ALTER TABLE documents ADD COLUMN email_subject TEXT",
+            "ALTER TABLE documents ADD COLUMN email_date TEXT",
+        ]:
+            try:
+                conn.execute(migration)
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
     finally:
         conn.close()
 
@@ -140,6 +149,10 @@ def insert_document(
     matched_rule: Optional[str] = None,
     scan_timestamp: Optional[str] = None,
     tax_relevant: int = 0,
+    email_source: int = 0,
+    email_from: Optional[str] = None,
+    email_subject: Optional[str] = None,
+    email_date: Optional[str] = None,
 ) -> int:
     """Insert a document record and return the new row id."""
     ts = scan_timestamp or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -149,12 +162,14 @@ def insert_document(
             INSERT INTO documents
                 (scan_timestamp, original_filename, new_filename, destination_folder,
                  onedrive_path, document_type, document_date, sender, recipient,
-                 company, keywords, extracted_text, matched_rule, tax_relevant)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 company, keywords, extracted_text, matched_rule, tax_relevant,
+                 email_source, email_from, email_subject, email_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ts, original_filename, new_filename, destination_folder,
              onedrive_path, document_type, document_date, sender, recipient,
-             company, keywords, extracted_text, matched_rule, tax_relevant),
+             company, keywords, extracted_text, matched_rule, tax_relevant,
+             email_source, email_from, email_subject, email_date),
         )
         return cur.lastrowid
 
