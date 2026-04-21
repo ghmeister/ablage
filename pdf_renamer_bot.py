@@ -20,6 +20,7 @@ from folder_classifier import FolderClassifier
 from folder_monitor import OneDriveDeltaMonitor
 from graph_client import GraphClient
 from pdf_extractor import PDFExtractor
+from telegram_bot import TelegramBot
 import db as _db
 
 _MAX_TEXT_STORE = 10_000  # characters to store in DB for full-text search
@@ -222,7 +223,7 @@ class AblageBot:
 
         # Write to document index
         try:
-            _db.insert_document(
+            new_doc_id = _db.insert_document(
                 original_filename=name,
                 new_filename=final_stem,
                 destination_folder=db_folder,
@@ -246,11 +247,20 @@ class AblageBot:
             print(f"Indexed   : {final_name}")
         except Exception as e:
             print(f"Warning   : DB write failed: {e}")
+            new_doc_id = None
 
-        _notification_title = "📄 Neues Dokument"
-        _notification_body = f"{final_stem}" + (f" · {metadata.get('document_type')}" if metadata.get("document_type") else "")
-        _notify_ha(title=_notification_title, message=_notification_body)
-        _notify_telegram(title=_notification_title, message=_notification_body)
+        _notify_ha(
+            title="📄 Neues Dokument",
+            message=f"{final_stem}" + (f" · {metadata.get('document_type')}" if metadata.get("document_type") else ""),
+        )
+        if _telegram and new_doc_id:
+            _telegram.notify_new_document(
+                doc_id=new_doc_id,
+                filename=final_stem,
+                doc_type=metadata.get("document_type"),
+                doc_date=metadata.get("date"),
+                email_from=email_context.get("from") if email_context else None,
+            )
 
         # Delete the sidecar now that it's been consumed
         if sidecar_item_id:
@@ -289,23 +299,18 @@ class AblageBot:
         self.monitor.start()
 
 
-def _notify_telegram(title: str, message: str) -> None:
+_telegram: TelegramBot | None = None
+
+
+def _init_telegram() -> None:
+    global _telegram
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-    if not (token and chat_id):
-        return
-    try:
-        text = f"*{title}*\n{message}"
-        payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=10)
-    except Exception as e:
-        print(f"Warning   : Telegram notification failed: {e}")
+    if token and chat_id:
+        ablage_url = os.getenv("ABLAGE_URL", "")
+        _telegram = TelegramBot(token, chat_id, ablage_url)
+        _telegram.start_polling()
+        print("Telegram  : Bot gestartet, warte auf Nachrichten…")
 
 
 def _notify_ha(title: str, message: str) -> None:
@@ -330,6 +335,7 @@ def _notify_ha(title: str, message: str) -> None:
 def main():
     sys.stdout = _Tee(_LOG_FILE)
     _write_status("idle")
+    _init_telegram()
     try:
         bot = AblageBot()
         bot.run()
