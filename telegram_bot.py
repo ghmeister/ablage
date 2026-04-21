@@ -360,32 +360,40 @@ class TelegramBot:
             print(f"Warning   : PDF upload failed: {e}")
             self._send_plain(chat_id, f"Fehler beim Upload: {e}")
 
-    # Common filler words that shouldn't be sent to FTS5
-    _STOP_WORDS = {
-        "i", "me", "my", "we", "you", "he", "she", "it", "they", "the", "a", "an",
-        "is", "are", "was", "were", "be", "been", "have", "has", "had", "do", "did",
-        "will", "would", "could", "should", "may", "might", "shall", "can",
-        "and", "or", "but", "if", "in", "on", "at", "to", "for", "of", "from",
-        "with", "by", "about", "into", "through", "during", "before", "after",
-        "when", "where", "which", "who", "whom", "what", "how", "why",
-        "this", "that", "these", "those", "there", "here",
-        "not", "no", "so", "up", "out", "as", "just", "than", "then", "some",
-        "any", "all", "also", "more", "most", "other", "such",
-        "ich", "mir", "mich", "wir", "sie", "er", "es", "ihr",
-        "der", "die", "das", "ein", "eine", "einen",
-        "ist", "war", "sind", "waren", "hat", "hatte", "haben",
-        "und", "oder", "aber", "wenn", "in", "an", "auf", "zu", "von",
-        "mit", "bei", "nach", "aus", "über", "unter", "für", "durch",
-        "wann", "wo", "wie", "was", "wer", "welche", "welchen",
-        "zuletzt", "letzte", "letzten", "letzter",
-        "habe", "hatte", "bekommen", "erhalten", "received", "last", "did", "get",
-    }
+    # Known document types stored in the DB (German labels used by the AI renamer)
+    _DOC_TYPES = [
+        "Rechnung", "Offerte", "Vertrag", "Versicherungspolice", "Kontoauszug",
+        "Lohnausweis", "Steuerdokument", "Mahnung", "Behördenschreiben",
+        "Arztbericht", "Brief", "Lieferschein", "Garantie", "Kündigung",
+    ]
 
-    def _extract_search_terms(self, question: str) -> str:
-        """Strip stop words, keep meaningful terms for FTS5."""
-        tokens = [t.strip(".,!?;:\"'") for t in question.split()]
-        meaningful = [t for t in tokens if t.lower() not in self._STOP_WORDS and len(t) > 1]
-        return " ".join(meaningful) if meaningful else question
+    def _extract_search_params(self, client, question: str) -> dict:
+        """Ask GPT to extract structured DB filters from a natural-language question."""
+        types_list = ", ".join(self._DOC_TYPES)
+        result = client.chat.completions.create(
+            model="gpt-4o-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Extract search parameters from the user's question about their document archive. "
+                        "Return a JSON object with these keys (use null if not applicable):\n"
+                        f"- document_type: one of [{types_list}] or null\n"
+                        "- sender: company or person name, or null\n"
+                        "- year: 4-digit year string, or null\n"
+                        "- keywords: list of meaningful search terms (names, topics) — "
+                        "exclude common words and question words"
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            max_tokens=150,
+        )
+        try:
+            return json.loads(result.choices[0].message.content)
+        except Exception:
+            return {"document_type": None, "sender": None, "year": None, "keywords": []}
 
     def _handle_natural_language(self, chat_id: str, question: str) -> None:
         if not self._openai_api_key:
@@ -393,8 +401,18 @@ class TelegramBot:
             return
         self._send_plain(chat_id, "🤔 Suche in der Ablage …")
         try:
-            search_terms = self._extract_search_terms(question)
-            rows, _ = _db.search_documents(query=search_terms, per_page=15)
+            from openai import OpenAI
+            client = OpenAI(api_key=self._openai_api_key)
+
+            params = self._extract_search_params(client, question)
+            fts_query = " ".join(params.get("keywords") or []) or None
+            rows, _ = _db.search_documents(
+                query=fts_query,
+                document_type=params.get("document_type") or None,
+                sender=params.get("sender") or None,
+                year=params.get("year") or None,
+                per_page=15,
+            )
             stats = _db.get_statistics()
             doc_lines = []
             for doc in rows:
