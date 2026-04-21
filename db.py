@@ -295,8 +295,10 @@ def store_embedding(doc_id: int, vector: list[float]) -> None:
         )
 
 
-def search_by_embedding(vector: list[float], k: int = 20) -> list[tuple[int, float]]:
-    """Return (doc_id, distance) pairs for the k nearest neighbours."""
+def search_by_embedding(
+    vector: list[float], k: int = 20, max_distance: float = 0.6
+) -> list[tuple[int, float]]:
+    """Return (doc_id, distance) pairs for the k nearest neighbours below max_distance."""
     if not _vec_available:
         return []
     from embed import serialize
@@ -308,7 +310,7 @@ def search_by_embedding(vector: list[float], k: int = 20) -> list[tuple[int, flo
                 "WHERE embedding MATCH vec_f32(?) ORDER BY distance LIMIT ?",
                 (blob, k),
             ).fetchall()
-            return [(r[0], r[1]) for r in rows]
+            return [(r[0], r[1]) for r in rows if r[1] <= max_distance]
         except Exception:
             return []
 
