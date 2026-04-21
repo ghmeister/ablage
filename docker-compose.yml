@@ -47,6 +47,8 @@ services:
             # - USER_ID=user@example.com
             - OUTPUT_BASE_FOLDER=Archive
             - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
+            - UI_USER=admin
+            - UI_PASSWORD=replace-me
             # Optional: set ARCHIVE_ROOT to enable the "PDF öffnen" button.
             # Mount the OneDrive archive folder and set the path here, e.g.:
             # - ARCHIVE_ROOT=/archive
