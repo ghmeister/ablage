@@ -417,6 +417,20 @@ class TelegramBot:
             else:
                 merged_ids = fts_ids[:15]
 
+            # Also fetch the 5 most recent documents matching the FTS query (or all docs
+            # if no FTS terms) so recency questions always have the latest docs in context
+            recent_rows, _ = _db.search_documents(
+                query=fts_query if fts_query else None,
+                per_page=5,
+                sort_by="document_date",
+                sort_order="desc",
+            )
+            seen_ids: set[int] = set(merged_ids)
+            for r in recent_rows:
+                if r["id"] not in seen_ids:
+                    merged_ids.append(r["id"])
+                    seen_ids.add(r["id"])
+
             rows = [doc for doc_id in merged_ids if (doc := _db.get_document(doc_id))]
             # Sort by date descending so GPT can answer recency questions correctly
             rows.sort(key=lambda d: d.get("document_date") or "", reverse=True)
