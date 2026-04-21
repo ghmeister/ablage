@@ -200,6 +200,7 @@ def index() -> str:
         sort_order=sort_order,
         archive_configured=_ARCHIVE_ROOT is not None,
         graph_enabled=bool(_get_graph()),
+        unseen_count=db_module.get_unseen_count(),
     )
 
 
@@ -438,6 +439,25 @@ def bulk_tax_relevant():
     for doc_id in ids:
         db_module.update_document(doc_id, tax_relevant=value)
     return jsonify({"updated": ids, "tax_relevant": bool(value)})
+
+
+@app.route("/api/documents/<int:doc_id>/seen", methods=["POST"])
+def mark_seen(doc_id: int):
+    if db_module.get_document(doc_id) is None:
+        return jsonify({"error": "not found"}), 404
+    db_module.update_document(doc_id, seen=1)
+    return jsonify({"seen": True})
+
+
+@app.route("/api/documents/bulk-seen", methods=["POST"])
+def bulk_seen():
+    data = request.get_json(force=True) or {}
+    ids = [int(i) for i in (data.get("ids") or []) if str(i).isdigit()]
+    if not ids:
+        return jsonify({"error": "ids required"}), 400
+    for doc_id in ids:
+        db_module.update_document(doc_id, seen=1)
+    return jsonify({"updated": ids})
 
 
 @app.route("/api/documents/bulk-delete", methods=["POST"])

@@ -10,8 +10,12 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h4 mb-0">Dokumentensuche</h1>
   <div class="d-flex align-items-center gap-2">
-    <span class="text-muted small">{{ total }} Dokument{% if total != 1 %}e{% endif %}</span>
+    <span class="text-muted small">
+      {{ total }} Dokument{% if total != 1 %}e{% endif %}
+      {% if unseen_count %}<span class="badge bg-primary ms-1">{{ unseen_count }} neu</span>{% endif %}
+    </span>
     {% if graph_enabled %}
+    <button id="bulkSeenBtn" class="btn btn-outline-primary btn-sm d-none">✓ Gelesen (<span id="selCountSeen">0</span>)</button>
     <button id="bulkTaxBtn" class="btn btn-outline-warning btn-sm d-none">★ Steuerrelevant (<span id="selCountTax">0</span>)</button>
     <button id="bulkDeleteBtn" class="btn btn-outline-danger btn-sm d-none">🗑 Auswahl löschen (<span id="selCount">0</span>)</button>
     {% endif %}
@@ -151,10 +155,11 @@
           <input type="checkbox" class="form-check-input mt-0 row-check" value="{{ row.id }}">
         </td>
         {% endif %}
-        <td class="text-nowrap small">{{ row.document_date or '–' }}</td>
+        <td class="text-nowrap small {% if not row.seen %}fw-semibold{% endif %}">{{ row.document_date or '–' }}</td>
         <td class="filename-cell" title="{{ row.new_filename }}">
-          <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none fw-semibold text-dark"
+          <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark {% if not row.seen %}fw-bold{% endif %}"
              onclick="event.stopPropagation()">{{ row.new_filename }}</a>
+          {% if not row.seen %}<span class="badge bg-primary ms-1" style="font-size:0.65rem">Neu</span>{% endif %}
         </td>
         <td class="text-nowrap">
           <span class="badge badge-type bg-{{ row.document_type | type_color }}">
@@ -186,7 +191,8 @@
   <div class="card doc-card shadow-sm">
     <div class="card-body py-2 px-3">
       <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark d-block">
-        <span class="doc-filename">{{ row.new_filename }}</span>
+        <span class="doc-filename {% if not row.seen %}fw-bold{% endif %}">{{ row.new_filename }}</span>
+        {% if not row.seen %}<span class="badge bg-primary ms-1" style="font-size:0.65rem">Neu</span>{% endif %}
       </a>
       <div class="d-flex align-items-center gap-2 mt-1">
         <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
@@ -284,16 +290,20 @@
 const selectAll     = document.getElementById('selectAll');
 const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
 const bulkTaxBtn    = document.getElementById('bulkTaxBtn');
+const bulkSeenBtn   = document.getElementById('bulkSeenBtn');
 const selCountEl    = document.getElementById('selCount');
 const selCountTaxEl = document.getElementById('selCountTax');
+const selCountSeenEl = document.getElementById('selCountSeen');
 
 function updateBulkBtns() {
   const checked = document.querySelectorAll('.row-check:checked');
   const n = checked.length;
   selCountEl.textContent = n;
   selCountTaxEl.textContent = n;
+  selCountSeenEl.textContent = n;
   bulkDeleteBtn.classList.toggle('d-none', n === 0);
   bulkTaxBtn.classList.toggle('d-none', n === 0);
+  bulkSeenBtn.classList.toggle('d-none', n === 0);
 }
 
 selectAll && selectAll.addEventListener('change', () => {
@@ -306,6 +316,26 @@ document.querySelectorAll('.row-check').forEach(cb => {
     if (selectAll) selectAll.checked = [...document.querySelectorAll('.row-check')].every(c => c.checked);
     updateBulkBtns();
   });
+});
+
+bulkSeenBtn && bulkSeenBtn.addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('.row-check:checked')].map(cb => parseInt(cb.value));
+  if (!ids.length) return;
+  bulkSeenBtn.disabled = true;
+  bulkSeenBtn.textContent = '…';
+  try {
+    const resp = await fetch('/api/documents/bulk-seen', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids}),
+    });
+    if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
+    window.location.reload();
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+    bulkSeenBtn.disabled = false;
+    bulkSeenBtn.innerHTML = '✓ Gelesen (<span id="selCountSeen">' + ids.length + '</span>)';
+  }
 });
 
 bulkTaxBtn && bulkTaxBtn.addEventListener('click', async () => {

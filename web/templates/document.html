@@ -263,6 +263,13 @@
 </button>
 
 <script>
+// ---------- Auto-mark seen on page load ----------
+{% if not doc.seen %}
+fetch('/api/documents/{{ doc.id }}/seen', {method: 'POST'}).catch(() => {});
+{% endif %}
+</script>
+
+<script>
 // ---------- Tax relevance toggle (always available) ----------
 (function() {
   const taxBtn = document.getElementById('taxBtn');

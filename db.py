@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS documents (
     extracted_text     TEXT,
     matched_rule       TEXT,
     tax_relevant       INTEGER NOT NULL DEFAULT 0,
+    seen               INTEGER NOT NULL DEFAULT 0,
     email_source       INTEGER NOT NULL DEFAULT 0,
     email_from         TEXT,
     email_subject      TEXT,
@@ -125,10 +126,15 @@ def init_db() -> None:
             "ALTER TABLE documents ADD COLUMN email_subject TEXT",
             "ALTER TABLE documents ADD COLUMN email_date TEXT",
             "ALTER TABLE documents ADD COLUMN email_message_id TEXT",
+            "ALTER TABLE documents ADD COLUMN seen INTEGER NOT NULL DEFAULT 0",
         ]:
             try:
                 conn.execute(migration)
                 conn.commit()
+                # Mark all pre-existing documents as seen so they don't appear as new
+                if "seen" in migration:
+                    conn.execute("UPDATE documents SET seen = 1")
+                    conn.commit()
             except Exception:
                 pass  # Column already exists
     finally:
@@ -177,6 +183,12 @@ def insert_document(
         return cur.lastrowid
 
 
+def get_unseen_count() -> int:
+    """Return the number of documents with seen=0."""
+    with _conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM documents WHERE seen = 0").fetchone()[0]
+
+
 def document_exists(new_filename: str) -> bool:
     """Return True if a document with this new_filename is already in the index."""
     with _conn() as conn:
@@ -202,7 +214,7 @@ def update_document(doc_id: int, **fields) -> None:
         "new_filename", "document_type", "destination_folder",
         "onedrive_path", "matched_rule",
         "document_date", "sender", "recipient", "company",
-        "tax_relevant",
+        "tax_relevant", "seen",
     }
     updates = {k: v for k, v in fields.items() if k in _allowed}
     if not updates:
