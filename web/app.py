@@ -427,8 +427,9 @@ def delete_document(doc_id: int):
                 item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
                 graph.delete_item(item["id"])
             except Exception as e:
-                # 404 means the file is already gone — still clean up the DB record
-                if "404" not in str(e):
+                # 404/itemNotFound means the file is already gone — still clean up the DB record
+                err = str(e)
+                if "404" not in err and "itemNotFound" not in err:
                     app.logger.warning(f"OneDrive delete failed for {doc_id}: {e}")
                     return jsonify({"error": f"OneDrive delete failed: {e}"}), 500
 
