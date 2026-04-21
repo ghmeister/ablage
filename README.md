@@ -1,88 +1,120 @@
 # Ablage
 
-An AI-powered document archiving system for OneDrive. Watches a drop-zone folder, renames incoming PDFs based on their content using GPT-4o-mini, files them into categorised subfolders, and provides a searchable web archive.
-
----
-
-## How it works
-
-```
-Scanbot app → OneDrive drop zone
-                     ↓  (Graph delta polling, every 30s)
-              Ablage bot
-                     ↓
-              GPT-4o-mini analysis
-              → structured filename  (e.g. Rechnung_Swisscard_Manuel_20260128.pdf)
-              → document type        (invoice, insurance, tax, …)
-                     ↓
-              moved to archive folder (e.g. Rechnungen/2026/)
-                     ↓
-              indexed in SQLite DB
-                     ↓
-              searchable via web UI
-```
+AI-powered document archiving for OneDrive. Drop a PDF into a watch folder — Ablage picks it up, extracts the text, asks an AI to classify and name it, moves it to the right archive folder, and indexes it for instant search.
 
 ---
 
 ## Features
 
-- **Cloud-native** — uses Microsoft Graph delta queries; no local sync client required
-- **AI classification** — GPT-4o-mini determines document type, date, sender, and generates a structured filename in one API call
-- **Automatic filing** — files documents into type/year subfolders (`Rechnungen/2026/`, `Versicherung/2025/`, etc.)
-- **Full-text search** — SQLite FTS5 index over filename, sender, keywords, and extracted text
-- **Web archive UI** — browse, search, filter, and sort all documents; open PDFs directly
-- **In-browser editing** — reclassify a document or rename it; the file is physically moved in OneDrive instantly via Graph
-- **Mobile-friendly** — card layout on small screens, installable as a home screen app on iPhone
-- **Fault-tolerant** — polling loop recovers from transient Graph errors with exponential backoff; duplicate filenames auto-suffixed
+- **Automatic archiving** — monitors an OneDrive folder via Microsoft Graph delta polling; no local sync required
+- **AI classification** — GPT-4o extracts document type, date, sender, recipient, keywords, and suggests a structured filename
+- **Smart routing** — configurable rules map document types to archive subfolders (e.g. invoices → `Archive/Rechnungen/2026`)
+- **Full-text search** — SQLite FTS5 index over filenames, senders, companies, keywords, and extracted text
+- **Semantic search** — sqlite-vec embeddings (`text-embedding-3-small`) for natural-language queries that survive plurals, synonyms, and cross-language phrasing
+- **Web UI** — search, filter, view metadata, reclassify, rename, and open PDFs directly from the browser
+- **Telegram bot** — new-document notifications, `/suche`, `/statistik`, natural-language questions, PDF forwarding, and duplicate alerts with one-tap delete
+- **Email integration** — works alongside [email-pdf-extractor](https://github.com/MinenMaster/email-pdf-extractor): attachments arrive with a `.meta.json` sidecar carrying sender, subject, and message ID for richer metadata
+- **Duplicate detection** — SHA-256 hash of extracted text; duplicates trigger a Telegram alert before filing
+- **Home Assistant notifications** — optional push notification to any HA notify service on new documents
 
 ---
 
-## Authentication modes
+## Architecture
 
-| Mode | When to use | What to set |
+```
+OneDrive Drop Zone
+       │
+       ▼
+ Graph delta poll  ──►  PDFExtractor  ──►  AIRenamer (GPT-4o)
+                                                  │
+                              ┌───────────────────┤
+                              ▼                   ▼
+                       FolderClassifier     SQLite index
+                              │            (FTS5 + vectors)
+                              ▼
+                     OneDrive Archive
+                     (move + rename)
+```
+
+| Component | File | Purpose |
 |---|---|---|
-| **Delegated / Device code** | Personal OneDrive (Microsoft account) | Leave `CLIENT_SECRET` unset. On first run, check the logs for a login URL + code. Token is cached to disk and silently refreshed. |
-| **App-only / Client credentials** | Work or school OneDrive with M365 licence | Set `CLIENT_SECRET` and `USER_ID`. No interactive login needed. |
+| Bot | `pdf_renamer_bot.py` | Orchestration, polling loop, notifications |
+| Graph client | `graph_client.py` | OneDrive API: download, move, rename, upload, delete |
+| AI renamer | `ai_renamer.py` | GPT-4o document analysis → structured metadata |
+| PDF extractor | `pdf_extractor.py` | Text extraction with PyPDF2 |
+| Folder classifier | `folder_classifier.py` | YAML rule engine → archive path |
+| Database | `db.py` | SQLite schema, FTS5, sqlite-vec, CRUD |
+| Embeddings | `embed.py` | Vector generation and serialization |
+| Telegram bot | `telegram_bot.py` | Polling, commands, NL queries, PDF upload |
+| Web UI | `web/app.py` | Flask app with search, document view, rule editor |
 
 ---
 
-## Quick start (Docker / Portainer)
+## Quick Start
 
-### 1. Register a Microsoft Entra app
+### 1. Azure App Registration
 
-1. Go to [portal.azure.com](https://portal.azure.com) → **App registrations → New registration**
+1. Go to [portal.azure.com](https://portal.azure.com) → **App registrations** → **New registration**
 2. Note the **Application (client) ID** and **Directory (tenant) ID**
-3. Under **API permissions**, add **Microsoft Graph → Files.ReadWrite** (delegated, for personal OneDrive) or **Files.ReadWrite.All** (application, for work OneDrive)
-4. For personal OneDrive: leave client secret empty. For work OneDrive: create a client secret under **Certificates & secrets**
+3. Add API permission: **Microsoft Graph → Files.ReadWrite** (delegated) or **Files.ReadWrite.All** (application)
+4. **Mode A — Personal OneDrive:** no client secret needed — device-code login on first run, token cached for all future runs
+5. **Mode B — Work/school OneDrive:** create a client secret under **Certificates & secrets**
 
-### 2. Find your drop-zone folder ID
+### 2. Find your drop zone folder ID
 
-The easiest way: open OneDrive in a browser, navigate to your drop-zone folder, and grab the `id` parameter from the URL. It looks like `15E1B4900D9A4063!s055cd26479014b18a902a226ec4e13a2`.
+Use [Graph Explorer](https://aka.ms/ge):
 
-### 3. Deploy with Docker Compose
+```
+GET https://graph.microsoft.com/v1.0/me/drive/root/children
+```
+
+Copy the `id` of the folder you want Ablage to watch.
+
+### 3. Configure
+
+```bash
+cp config.example.env .env
+# Fill in OPENAI_API_KEY, TENANT_ID, CLIENT_ID, SOURCE_FOLDER_ID
+```
+
+### 4. Run with Docker Compose
+
+```bash
+docker compose up -d
+```
+
+On first run (Mode A), check the logs for the one-time login URL:
+
+```bash
+docker compose logs -f ablage
+```
+
+---
+
+## Docker Compose
 
 ```yaml
-version: "3.9"
-
 services:
   ablage:
     image: ghcr.io/minenmaster/pdf-renamer:latest
     restart: unless-stopped
     environment:
       - OPENAI_API_KEY=sk-...
-      - TENANT_ID=your-tenant-id
-      - CLIENT_ID=your-client-id
-      # Personal OneDrive: leave CLIENT_SECRET and USER_ID commented out.
-      # Work OneDrive: uncomment both.
-      # - CLIENT_SECRET=your-secret
-      # - USER_ID=user@example.com
-      - SOURCE_FOLDER_ID=your-folder-id
-      - OUTPUT_BASE_FOLDER=Scanbot/Ablage   # archive root inside OneDrive
-      - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
+      - TENANT_ID=...
+      - CLIENT_ID=...
+      - SOURCE_FOLDER_ID=...
+      - OUTPUT_BASE_FOLDER=Archive
       - POLL_INTERVAL_SECONDS=30
-      - MAX_FILENAME_LENGTH=100
-      - TOKEN_CACHE_PATH=/data/.token_cache.json
       - DB_PATH=/data/documents.db
+      - TOKEN_CACHE_PATH=/data/token_cache.json
+      # Optional: Telegram
+      # - TELEGRAM_BOT_TOKEN=...
+      # - TELEGRAM_CHAT_ID=...
+      # - ABLAGE_URL=https://ablage.example.com
+      # Optional: Home Assistant
+      # - HA_URL=http://homeassistant:8123
+      # - HA_TOKEN=...
+      # - HA_NOTIFY_SERVICE=mobile_app_my_iphone
     volumes:
       - doc_data:/data
 
@@ -90,141 +122,154 @@ services:
     image: ghcr.io/minenmaster/pdf-renamer:latest
     restart: unless-stopped
     command: ["python", "web/app.py"]
-    ports:
-      - "5000:5000"
     environment:
       - DB_PATH=/data/documents.db
-      - TENANT_ID=your-tenant-id
-      - CLIENT_ID=your-client-id
-      # - CLIENT_SECRET=your-secret
-      # - USER_ID=user@example.com
-      - TOKEN_CACHE_PATH=/data/.token_cache.json
-      - OUTPUT_BASE_FOLDER=Scanbot/Ablage
-      - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
-      # Optional: mount your local OneDrive folder to enable the "PDF öffnen" button
+      - TENANT_ID=...
+      - CLIENT_ID=...
+      - OUTPUT_BASE_FOLDER=Archive
+      - UI_USER=admin
+      - UI_PASSWORD=changeme
+      - SECRET_KEY=random-string-here
+      # Optional: serve PDFs locally without Graph API round-trip
       # - ARCHIVE_ROOT=/archive
     volumes:
       - doc_data:/data
-      # - /home/user/OneDrive/Scanbot/Ablage:/archive:ro
+      # - /path/to/OneDrive/Archive:/archive:ro
+    networks:
+      - proxy
 
 volumes:
   doc_data:
-```
 
-On first run with a personal account, check the logs for the device-code login prompt. After logging in once, the token is cached and refreshed automatically.
+networks:
+  proxy:
+    external: true
+```
 
 ---
 
-## Environment variables
+## Environment Variables
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `OPENAI_API_KEY` | ✓ | — | OpenAI API key |
-| `TENANT_ID` | ✓ | — | Microsoft Entra tenant ID (use `consumers` for personal accounts) |
-| `CLIENT_ID` | ✓ | — | App registration client ID |
-| `CLIENT_SECRET` | — | — | Client secret (app-only/work OneDrive only) |
-| `USER_ID` | — | — | User UPN or object ID (app-only mode only) |
-| `SOURCE_FOLDER_ID` | ✓ | — | OneDrive driveItem ID of the drop-zone folder |
-| `OUTPUT_BASE_FOLDER` | — | — | Archive root path inside OneDrive (e.g. `Scanbot/Ablage`) |
-| `CLASSIFICATION_RULES_FILE` | — | `classification_rules.yaml` | Path to the classification rules YAML |
-| `POLL_INTERVAL_SECONDS` | — | `30` | How often to check OneDrive for new files |
-| `MAX_FILENAME_LENGTH` | — | `100` | Maximum generated filename length |
-| `TOKEN_CACHE_PATH` | — | `/data/.token_cache.json` | Where to persist the MSAL token cache |
-| `DB_PATH` | — | `/data/documents.db` | Path to the SQLite document index |
-| `ARCHIVE_ROOT` | — | — | Local mount path of the archive (web UI only, enables PDF preview) |
+### Bot (`ablage`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | ✓ | OpenAI API key |
+| `TENANT_ID` | ✓ | Azure AD tenant ID |
+| `CLIENT_ID` | ✓ | Azure App client ID |
+| `SOURCE_FOLDER_ID` | ✓ | OneDrive folder item ID to watch |
+| `CLIENT_SECRET` | — | App-only auth (work/school accounts with M365) |
+| `USER_ID` | — | Target user UPN for app-only auth |
+| `OUTPUT_BASE_FOLDER` | — | Archive root path in OneDrive (e.g. `Archive`) |
+| `CLASSIFICATION_RULES_FILE` | — | Path to rules YAML (default: `classification_rules.yaml`) |
+| `POLL_INTERVAL_SECONDS` | — | Delta poll interval in seconds (default: `30`) |
+| `MAX_FILENAME_LENGTH` | — | Filename character limit (default: `100`) |
+| `DB_PATH` | — | SQLite database path (default: `/data/documents.db`) |
+| `TOKEN_CACHE_PATH` | — | MSAL token cache path (default: `/data/token_cache.json`) |
+| `TELEGRAM_BOT_TOKEN` | — | Telegram bot token from @BotFather |
+| `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
+| `ABLAGE_URL` | — | Public URL of the web UI (for Telegram deep links) |
+| `HA_URL` | — | Home Assistant base URL |
+| `HA_TOKEN` | — | Home Assistant long-lived access token |
+| `HA_NOTIFY_SERVICE` | — | HA notify service name (e.g. `mobile_app_my_iphone`) |
+
+### Web UI (`ablage-web`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `DB_PATH` | ✓ | SQLite database path |
+| `UI_USER` | ✓ | Login username |
+| `UI_PASSWORD` | ✓ | Login password |
+| `SECRET_KEY` | ✓ | Flask session secret (any random string) |
+| `TENANT_ID` / `CLIENT_ID` | — | Required for reclassify and rename features |
+| `OUTPUT_BASE_FOLDER` | — | Archive root, must match bot config |
+| `ARCHIVE_ROOT` | — | Local mount path for PDFs (faster serving, no Graph API call) |
 
 ---
 
-## Filename convention
+## Classification Rules
 
-Generated filenames follow a structured pattern:
+Edit `classification_rules.yaml` to control where each document type is filed:
 
+```yaml
+unmatched_folder: "Misc"
+
+type_to_folder:
+  invoice:   "Rechnungen"
+  insurance: "Versicherung"
+  tax:       "Steuer"
+  quote:     "Offerten"
+  contract:  "Verträge"
 ```
-<Type>_<Company>_<Person>_<Details>_<YYYYMMDD>.pdf
-```
 
-| Part | Example |
+Files are moved to `{OUTPUT_BASE_FOLDER}/{folder}/{year}/` — a 2026 invoice goes to `Archive/Rechnungen/2026/`. Rules can also be edited live in the web UI under **Rules**.
+
+---
+
+## Telegram Bot
+
+Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in the bot's environment to enable.
+
+| Command / Input | Description |
 |---|---|
-| Type (German) | `Rechnung`, `Praemienrechnung`, `Lohnausweis`, `Kontoauszug` |
-| Company | `Swisscard`, `Allianz`, `BKW`, `Visana` |
-| Person | `Manuel`, `Judith` (known family members) |
-| Details | Policy number, account number, subject |
-| Date | `20260204` |
+| `/suche Begriff` | Full-text keyword search |
+| `/statistik` | Archive overview: totals, breakdown by type |
+| `/hilfe` | Command reference |
+| Send a PDF | Uploads directly to the drop zone and triggers processing |
+| Any other message | Natural-language document query |
 
-Examples:
-```
-Rechnung_Swisscard_Manuel_20260128.pdf
-Praemienrechnung_Allianz_V955415027_Motorfahrzeug_20251001.pdf
-Lohnausweis_Accenture_Judith_20241231.pdf
-Steuerrechnung_Bern_2025_20250615.pdf
-```
+**Natural-language examples:**
+- *"Wann habe ich zuletzt eine Rechnung von Swisscom erhalten?"*
+- *"Zeige mir alle Spendenbescheinigungen"*
+- *"Welche Versicherungsunterlagen habe ich von 2024?"*
+- *"When did I receive the last offer from Ramseier?"*
 
----
+Search uses a hybrid approach: FTS5 keyword matching (precise for proper nouns) combined with semantic vector search via sqlite-vec (handles plurals, synonyms, cross-language queries), merged with Reciprocal Rank Fusion. Results are answered by GPT-4o-mini in German with clickable deep links to each document.
 
-## Document types and folder mapping
-
-| Type | Folder |
-|---|---|
-| `invoice` | `Rechnungen/` |
-| `insurance` | `Versicherung/` |
-| `tax` | `Steuer/` |
-| `medical_report` | `Dokumente/Arzt/` |
-| `bank_statement` | `Dokumente/Kontoauszüge/` |
-| `contract` | `Dokumente/Verträge/` |
-| `warranty` | `Dokumente/Garantienachweise/` |
-| `id_document` | `Dokumente/Ausweise/` |
-| `certificate` | `Dokumente/Zeugnisse/` |
-| `letter` | `Dokumente/Briefe/` |
-| `quote` | `Dokumente/Offerten/` |
-| `other` | `Dokumente/Misc/` |
-
-A year subfolder is always appended (e.g. `Rechnungen/2026/`). Folder mapping and display labels are configured in `classification_rules.yaml`.
+When a duplicate is detected during archiving, a Telegram alert lets you keep or delete the new file with a single tap.
 
 ---
 
-## Web UI
+## Semantic Search: Backfill
 
-The web UI runs as a separate container on port 5000.
-
-**Search & filter** — full-text search across filename, sender, keywords, and extracted text; filter by type, year, and sender.
-
-**Document detail** — view metadata, open the PDF, share it (iOS share sheet for banking apps), rename, or reclassify. Reclassification physically moves the file in OneDrive instantly.
-
-**Mobile** — card layout on small screens, collapsible filters, sortable results. Installable as a home screen app on iPhone via Safari → Share → Add to Home Screen.
-
----
-
-## Backfilling an existing archive
-
-To index PDFs that were filed before the bot was set up:
+After first deployment, run the backfill script once to embed existing documents:
 
 ```bash
-python index_existing.py /path/to/local/archive \
-  --onedrive-prefix Scanbot/Ablage \
-  --db /path/to/documents.db
+docker exec <ablage-container-name> python backfill_embeddings.py
 ```
 
-Use `--no-ai` to skip AI analysis and parse metadata from the structured filename instead (much faster).
+This calls the OpenAI embedding API for each document (~$0.01 for 500 docs, ~1 minute). New documents are embedded automatically on ingest.
 
 ---
 
-## Project structure
+## Email Integration
 
+When used with [email-pdf-extractor](https://github.com/MinenMaster/email-pdf-extractor), PDF attachments arrive in the drop zone alongside a `.meta.json` sidecar:
+
+```json
+{
+  "from": "billing@swisscom.ch",
+  "subject": "Ihre Rechnung Januar 2026",
+  "date": "2026-01-15",
+  "message_id": "<abc123@swisscom.ch>"
+}
 ```
-ablage/
-├── pdf_renamer_bot.py        # Main bot — orchestrates polling, AI, filing
-├── folder_monitor.py         # Graph delta polling loop
-├── graph_client.py           # Microsoft Graph API wrapper
-├── ai_renamer.py             # GPT-4o-mini document analysis
-├── pdf_extractor.py          # PDF text extraction
-├── folder_classifier.py      # document_type → archive folder mapping
-├── db.py                     # SQLite index + FTS5 search
-├── index_existing.py         # Backfill script for existing archives
-├── classification_rules.yaml # Folder mapping, labels, and badge colours
-├── web/
-│   ├── app.py                # Flask web UI
-│   └── templates/            # Jinja2 templates
-├── Dockerfile
-├── docker-compose.yml
-└── requirements.txt
+
+Ablage reads the sidecar, enriches the document record with email context, then deletes it. The web UI and Telegram notifications include the original sender and a direct Gmail deep link.
+
+---
+
+## Development
+
+```bash
+pip install -r requirements.txt
+
+# Run bot locally
+cp config.example.env .env
+python pdf_renamer_bot.py
+
+# Run web UI locally
+DB_PATH=./documents.db UI_USER=admin UI_PASSWORD=secret SECRET_KEY=dev python web/app.py
 ```
+
+The Docker image is built and pushed to GHCR automatically on every push to `main` via GitHub Actions.
