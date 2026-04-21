@@ -362,100 +362,110 @@ class TelegramBot:
             print(f"Warning   : PDF upload failed: {e}")
             self._send_plain(chat_id, f"Fehler beim Upload: {e}")
 
-    _NL_STOP_WORDS = {
-        # English
-        "i", "me", "my", "we", "you", "the", "a", "an", "is", "are", "was",
-        "have", "has", "do", "did", "will", "would", "could", "should", "can",
-        "and", "or", "but", "in", "on", "at", "to", "for", "of", "from",
-        "with", "by", "when", "where", "what", "how", "who", "this", "that",
-        "not", "all", "any", "some", "show", "find", "get", "give", "tell",
-        "which", "last", "latest", "recent", "received", "sent", "got",
-        # German pronouns / articles
-        "ich", "mir", "mich", "wir", "uns", "sie", "ihr", "ihnen",
-        "der", "die", "das", "dem", "den", "des", "ein", "eine", "einem", "einen", "eines",
-        # German question words & determiners
-        "wann", "wo", "wie", "was", "wer", "wen", "wem", "wessen",
-        "welche", "welches", "welchen", "welchem", "welcher",
-        "welch",
-        # German verbs / auxiliaries
-        "ist", "war", "sind", "waren", "hat", "hatte", "haben", "hatten",
-        "bin", "wird", "wurde", "wurden", "werden",
-        "und", "oder", "aber", "wenn", "denn", "weil", "dass",
-        # German prepositions
-        "in", "an", "auf", "zu", "von", "mit", "bei", "nach", "aus", "für",
-        "durch", "über", "unter", "neben", "zwischen", "vor", "hinter",
-        # German adverbs / question context
-        "alle", "zeige", "zeig", "finde", "suche", "zeigen", "anzeigen", "auflisten", "liste",
-        "habe", "hatte", "bekommen", "erhalten", "zuletzt", "letzte", "letzten", "letzter",
-        "neueste", "neuesten", "neuester", "aktuell", "aktuellste", "aktuellsten",
-        "erste", "ersten", "erster",
-        # Document meta words
-        "dokument", "dokumente", "datei", "dateien", "unterlagen", "ablage",
-        "deren", "dessen", "absender", "empfänger", "betreff", "thema",
-        "gibt",
-    }
-
-    def _fts_terms_from_question(self, question: str) -> Optional[str]:
-        tokens = [t.strip(".,!?;:\"'()") for t in question.split()]
-        terms = [t for t in tokens if t.lower() not in self._NL_STOP_WORDS and len(t) > 1]
-        return " ".join(terms) if terms else None
-
     def _handle_natural_language(self, chat_id: str, question: str) -> None:
         if not self._openai_api_key:
             self._send_plain(chat_id, "KI-Fragen sind nicht konfiguriert (OPENAI_API_KEY fehlt).")
             return
         self._send_plain(chat_id, "🤔 Suche in der Ablage …")
         try:
+            import json as _json
             from openai import OpenAI
             from embed import get_embedding
             client = OpenAI(api_key=self._openai_api_key)
 
-            # 1. FTS search — catches exact proper nouns (names, companies)
-            fts_query = self._fts_terms_from_question(question)
-            fts_rows, _ = _db.search_documents(query=fts_query, per_page=20)
-            fts_ids = [r["id"] for r in fts_rows]
+            stats = _db.get_statistics()
+            known_types = ", ".join(
+                t for t in (stats.get("by_type") or {}).keys() if t
+            ) or "invoice, insurance, tax, contract, quote"
 
-            # 2. Vector search — catches synonyms, plurals, cross-language matches
-            question_vec = get_embedding(question, self._openai_api_key)
-            vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=self._nl_max_distance)
-            vec_ids = [r[0] for r in vec_results]
-
-
-            # 3. Reciprocal Rank Fusion — documents appearing in both lists rank highest
-            K = 60
-            scores: dict[int, float] = {}
-            for rank, doc_id in enumerate(fts_ids):
-                scores[doc_id] = scores.get(doc_id, 0) + 1 / (K + rank + 1)
-            for rank, doc_id in enumerate(vec_ids):
-                scores[doc_id] = scores.get(doc_id, 0) + 1 / (K + rank + 1)
-
-            if scores:
-                merged_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:15]
-            else:
-                merged_ids = fts_ids[:15]
-
-            # Also fetch the 5 most recent documents matching the FTS query (or all docs
-            # if no FTS terms) so recency questions always have the latest docs in context
-            recent_rows, _ = _db.search_documents(
-                query=fts_query if fts_query else None,
-                per_page=5,
-                sort_by="document_date",
-                sort_order="desc",
+            # ── Step 1: extract structured query intent ───────────────────────
+            intent_resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You extract search intent from a question about a personal document archive. "
+                            f"Known document types in the archive: {known_types}. "
+                            "Return JSON with these fields (all optional, use null if not applicable):\n"
+                            '{"document_type": "<exact type from known list or null>",\n'
+                            ' "sender": "<company or person name or null>",\n'
+                            ' "year": "<4-digit year or null>",\n'
+                            ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
+                            ' "sort": "date_desc" | "date_asc" | "relevance",\n'
+                            ' "limit": <1-20, default 10>}\n'
+                            "Use sort=date_desc for questions about the latest/most recent document. "
+                            "Use sort=date_asc for oldest. "
+                            "Use limit=1 for 'what is the last/latest X'. "
+                            "Only return JSON, no other text."
+                        ),
+                    },
+                    {"role": "user", "content": question},
+                ],
+                max_tokens=150,
+                response_format={"type": "json_object"},
             )
-            seen_ids: set[int] = set(merged_ids)
-            for r in recent_rows:
+            try:
+                intent = _json.loads(intent_resp.choices[0].message.content)
+            except Exception:
+                intent = {}
+
+            doc_type = intent.get("document_type") or None
+            sender   = intent.get("sender") or None
+            year     = intent.get("year") or None
+            keywords = intent.get("keywords") or None
+            sort     = intent.get("sort", "relevance")
+            limit    = max(1, min(int(intent.get("limit") or 10), 20))
+
+            sort_by    = "document_date" if sort in ("date_desc", "date_asc") else "scan_timestamp"
+            sort_order = "asc" if sort == "date_asc" else "desc"
+
+            print(f"NL intent : type={doc_type!r} sender={sender!r} year={year!r} "
+                  f"keywords={keywords!r} sort={sort} limit={limit}")
+
+            # ── Step 2: retrieve candidates ───────────────────────────────────
+            rows: list[dict] = []
+            seen_ids: set[int] = set()
+
+            # A. Structured DB query (handles type/sender/year/date-sort perfectly)
+            db_rows, _ = _db.search_documents(
+                query=keywords,
+                document_type=doc_type,
+                sender=sender,
+                year=year,
+                per_page=limit,
+                sort_by=sort_by,
+                sort_order=sort_order,
+            )
+            for r in db_rows:
                 if r["id"] not in seen_ids:
-                    merged_ids.append(r["id"])
+                    rows.append(r)
                     seen_ids.add(r["id"])
 
-            rows = [doc for doc_id in merged_ids if (doc := _db.get_document(doc_id))]
-            # Sort by date descending so GPT can answer recency questions correctly
-            rows.sort(key=lambda d: d.get("document_date") or "", reverse=True)
+            # B. Semantic vector search (helps when no structured filters match)
+            if keywords or not rows:
+                search_text = keywords or question
+                question_vec = get_embedding(search_text, self._openai_api_key)
+                vec_results = _db.search_by_embedding(
+                    question_vec, k=20, max_distance=self._nl_max_distance
+                )
+                vec_ids = [r[0] for r in vec_results]
+                # Fetch and append vector hits not already in rows
+                extra_needed = max(0, limit - len(rows))
+                added = 0
+                for doc_id in vec_ids:
+                    if added >= extra_needed:
+                        break
+                    if doc_id not in seen_ids:
+                        doc = _db.get_document(doc_id)
+                        if doc:
+                            rows.append(doc)
+                            seen_ids.add(doc_id)
+                            added += 1
 
-            # 4. Build context and answer with GPT (single call, structured output)
-            stats = _db.get_statistics()
-            doc_lines = []
+            # ── Step 3: answer with GPT ───────────────────────────────────────
             id_to_doc = {doc["id"]: doc for doc in rows}
+            doc_lines = []
             for doc in rows:
                 parts = [f"[ID:{doc['id']}] {doc.get('new_filename', '')}"]
                 if doc.get("document_type"):
@@ -469,7 +479,7 @@ class TelegramBot:
                 doc_lines.append(" | ".join(parts))
             context = "\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
 
-            response = client.chat.completions.create(
+            answer_resp = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {
@@ -478,36 +488,32 @@ class TelegramBot:
                             "Du bist ein persönlicher Assistent für Meisters Dokumentenablage. "
                             "Beantworte Fragen auf Deutsch, präzise und freundlich. "
                             f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
-                            "Die folgenden Dokumente sind top Suchergebnisse — nach Datum absteigend sortiert (neuestes zuerst), "
-                            "können aber auch ähnliche (nicht exakt passende) Treffer enthalten. "
-                            "Beantworte die Frage präzise anhand der Dokumente, die wirklich passen. "
-                            "Ignoriere Dokumente, die nicht zur Frage passen. "
+                            "Die folgenden Dokumente wurden gezielt aus der Datenbank abgerufen. "
+                            "Beantworte die Frage anhand dieser Dokumente. "
                             "Antworte im folgenden JSON-Format:\n"
-                            '{"answer": "<deine Antwort auf Deutsch>", "ids": [<IDs der wirklich passenden Dokumente>]}\n'
+                            '{"answer": "<deine Antwort auf Deutsch>", "ids": [<IDs der relevanten Dokumente>]}\n'
                             "Gib nur JSON zurück, kein weiterer Text."
                         ),
                     },
                     {
                         "role": "user",
-                        "content": f"Frage: {question}\n\nSuchergebnisse:\n{context}",
+                        "content": f"Frage: {question}\n\nDokumente:\n{context}",
                     },
                 ],
                 max_tokens=500,
                 response_format={"type": "json_object"},
             )
 
-            import json as _json
             try:
-                gpt_result = _json.loads(response.choices[0].message.content)
-                answer_text = gpt_result.get("answer", "")
+                gpt_result = _json.loads(answer_resp.choices[0].message.content)
+                answer_text    = gpt_result.get("answer", "")
                 referenced_ids = [int(i) for i in gpt_result.get("ids", [])]
             except Exception:
-                answer_text = response.choices[0].message.content
+                answer_text    = answer_resp.choices[0].message.content
                 referenced_ids = [doc["id"] for doc in rows]
 
             self._send_plain(chat_id, answer_text)
 
-            # Only show links for documents GPT actually referenced
             linked_docs = [id_to_doc[i] for i in referenced_ids if i in id_to_doc]
             if linked_docs and self._ablage_url:
                 keyboard = [
