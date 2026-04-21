@@ -250,6 +250,24 @@ class AblageBot:
             print(f"Warning   : DB write failed: {e}")
             new_doc_id = None
 
+        if new_doc_id:
+            try:
+                from embed import build_document_text, get_embedding
+                embed_doc = {
+                    "new_filename": final_stem,
+                    "document_type": metadata.get("document_type"),
+                    "sender": metadata.get("sender"),
+                    "company": metadata.get("company"),
+                    "recipient": metadata.get("recipient"),
+                    "keywords": ", ".join(metadata.get("keywords") or []),
+                }
+                vector = get_embedding(build_document_text(embed_doc),
+                                       os.getenv("OPENAI_API_KEY", ""))
+                _db.store_embedding(new_doc_id, vector)
+                print(f"Embedding : stored")
+            except Exception as e:
+                print(f"Warning   : Embedding failed: {e}")
+
         _notify_ha(
             title="📄 Neues Dokument",
             message=f"{final_stem}" + (f" · {metadata.get('document_type')}" if metadata.get("document_type") else ""),

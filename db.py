@@ -15,6 +15,22 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 _db_path_override: Optional[Path] = None
+_vec_available: bool = False  # set to True once sqlite-vec loads successfully
+
+
+def _try_load_vec(conn: sqlite3.Connection) -> bool:
+    global _vec_available
+    if _vec_available:
+        return True
+    try:
+        import sqlite_vec
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        _vec_available = True
+        return True
+    except Exception:
+        return False
 
 
 def _get_db_path() -> Path:
@@ -98,6 +114,7 @@ def _get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    _try_load_vec(conn)
     return conn
 
 
@@ -119,6 +136,15 @@ def init_db() -> None:
     conn = _get_connection()
     try:
         conn.executescript(_SCHEMA)
+        if _vec_available:
+            try:
+                conn.execute(
+                    f"CREATE VIRTUAL TABLE IF NOT EXISTS vec_documents "
+                    f"USING vec0(embedding float[1536])"
+                )
+                conn.commit()
+            except Exception:
+                pass
         # Migration: add tax_relevant column if it doesn't exist yet
         for migration in [
             "ALTER TABLE documents ADD COLUMN tax_relevant INTEGER NOT NULL DEFAULT 0",
@@ -252,6 +278,55 @@ def delete_document(doc_id: int) -> None:
     """Delete a document record by id."""
     with _conn() as conn:
         conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        try:
+            conn.execute("DELETE FROM vec_documents WHERE rowid = ?", (doc_id,))
+        except Exception:
+            pass
+
+
+def store_embedding(doc_id: int, vector: list[float]) -> None:
+    """Store a float32 embedding vector for a document."""
+    if not _vec_available:
+        return
+    from embed import serialize
+    blob = serialize(vector)
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO vec_documents(rowid, embedding) VALUES (?, vec_f32(?))",
+            (doc_id, blob),
+        )
+
+
+def search_by_embedding(vector: list[float], k: int = 20) -> list[tuple[int, float]]:
+    """Return (doc_id, distance) pairs for the k nearest neighbours."""
+    if not _vec_available:
+        return []
+    from embed import serialize
+    blob = serialize(vector)
+    with _conn() as conn:
+        try:
+            rows = conn.execute(
+                "SELECT rowid, distance FROM vec_documents "
+                "WHERE embedding MATCH vec_f32(?) ORDER BY distance LIMIT ?",
+                (blob, k),
+            ).fetchall()
+            return [(r[0], r[1]) for r in rows]
+        except Exception:
+            return []
+
+
+def get_documents_without_embedding() -> list[dict]:
+    """Return all documents that have no embedding stored yet."""
+    with _conn() as conn:
+        try:
+            rows = conn.execute(
+                "SELECT * FROM documents "
+                "WHERE id NOT IN (SELECT rowid FROM vec_documents) "
+                "ORDER BY id"
+            ).fetchall()
+        except Exception:
+            rows = conn.execute("SELECT * FROM documents ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
 
 
 _SORTABLE_COLUMNS = {

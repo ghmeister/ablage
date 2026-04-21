@@ -360,62 +360,23 @@ class TelegramBot:
             print(f"Warning   : PDF upload failed: {e}")
             self._send_plain(chat_id, f"Fehler beim Upload: {e}")
 
-    # Known document types with descriptions for the NL extraction prompt
-    _DOC_TYPE_DESCRIPTIONS = {
-        "Rechnung":            "invoice, bill, payment request (Faktura, Quittung, Jahresrechnung)",
-        "Offerte":             "quote, offer, proposal, cost estimate (Angebot, Kostenvoranschlag)",
-        "Vertrag":             "contract, agreement, terms (Mietvertrag, Arbeitsvertrag)",
-        "Versicherungspolice": "insurance policy, coverage document",
-        "Kontoauszug":         "bank statement, account statement",
-        "Lohnausweis":         "salary certificate, pay slip",
-        "Steuerdokument":      "tax document, tax return, tax certificate",
-        "Mahnung":             "reminder, dunning letter, overdue notice",
-        "Behördenschreiben":   "official letter from authorities, government correspondence",
-        "Arztbericht":         "medical report, doctor's letter, lab results",
-        "Brief":               "general letter or correspondence",
-        "Lieferschein":        "delivery note, shipping document",
-        "Garantie":            "warranty, guarantee certificate",
-        "Kündigung":           "termination notice, cancellation",
+    _NL_STOP_WORDS = {
+        "i", "me", "my", "we", "you", "the", "a", "an", "is", "are", "was",
+        "have", "has", "do", "did", "will", "would", "could", "should", "can",
+        "and", "or", "but", "in", "on", "at", "to", "for", "of", "from",
+        "with", "by", "when", "where", "what", "how", "who", "this", "that",
+        "not", "all", "any", "some", "show", "find", "get", "give", "tell",
+        "ich", "mir", "wir", "sie", "der", "die", "das", "ein", "eine",
+        "ist", "war", "hat", "und", "oder", "wenn", "in", "an", "auf", "zu",
+        "von", "mit", "bei", "nach", "aus", "für", "durch", "wann", "wo",
+        "wie", "was", "wer", "alle", "zeige", "zeig", "finde", "suche",
+        "habe", "hatte", "bekommen", "erhalten", "zuletzt", "letzte", "letzten",
     }
-    # Fallback list if DB has no types yet
-    _DOC_TYPES = list(_DOC_TYPE_DESCRIPTIONS.keys())
 
-    def _extract_search_params(self, client, question: str) -> dict:
-        """Ask GPT to extract structured DB filters from a natural-language question."""
-        known_types = _db.get_distinct_values("document_type")
-        if not known_types:
-            known_types = self._DOC_TYPES
-        type_lines = "\n".join(
-            f'  "{t}": {self._DOC_TYPE_DESCRIPTIONS.get(t, "")}'
-            for t in known_types
-        )
-        result = client.chat.completions.create(
-            model="gpt-4o-mini",
-            response_format={"type": "json_object"},
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Extract search parameters from the user's question about their document archive. "
-                        "Return a JSON object with these keys (use null/false if not applicable):\n"
-                        "- document_type: must be exactly one of the keys below, or null\n"
-                        "- sender: company or person name, or null\n"
-                        "- year: 4-digit year string, or null\n"
-                        "- email_only: true if the question specifically asks about emails, otherwise false\n"
-                        "- keywords: list of meaningful search terms (names, topics) — "
-                        "use singular/base forms (e.g. 'Spendenbescheinigung' not 'Spendenbescheinigungen'), "
-                        "exclude common words and question words\n\n"
-                        "Available document types:\n" + type_lines
-                    ),
-                },
-                {"role": "user", "content": question},
-            ],
-            max_tokens=150,
-        )
-        try:
-            return json.loads(result.choices[0].message.content)
-        except Exception:
-            return {"document_type": None, "sender": None, "year": None, "keywords": []}
+    def _fts_terms_from_question(self, question: str) -> Optional[str]:
+        tokens = [t.strip(".,!?;:\"'()") for t in question.split()]
+        terms = [t for t in tokens if t.lower() not in self._NL_STOP_WORDS and len(t) > 1]
+        return " ".join(terms) if terms else None
 
     def _handle_natural_language(self, chat_id: str, question: str) -> None:
         if not self._openai_api_key:
@@ -424,31 +385,35 @@ class TelegramBot:
         self._send_plain(chat_id, "🤔 Suche in der Ablage …")
         try:
             from openai import OpenAI
+            from embed import get_embedding
             client = OpenAI(api_key=self._openai_api_key)
 
-            params = self._extract_search_params(client, question)
-            # Build FTS terms: keywords + sender + document_type so all indexed
-            # fields are searched (filename, company, keywords, extracted_text, etc.)
-            fts_terms = list(params.get("keywords") or [])
-            sender = (params.get("sender") or "").strip()
-            doc_type = (params.get("document_type") or "").strip()
-            if sender and sender not in fts_terms:
-                fts_terms.append(sender)
-            if doc_type and doc_type not in fts_terms:
-                fts_terms.append(doc_type)
-            fts_query = " ".join(fts_terms) or None
+            # 1. FTS search — catches exact proper nouns (names, companies)
+            fts_query = self._fts_terms_from_question(question)
+            fts_rows, _ = _db.search_documents(query=fts_query, per_page=20)
+            fts_ids = [r["id"] for r in fts_rows]
 
-            # Only apply document_type as a hard SQL filter if it's a real DB value
-            known_types = set(_db.get_distinct_values("document_type"))
-            hard_doc_type = doc_type if doc_type in known_types else None
+            # 2. Vector search — catches synonyms, plurals, cross-language matches
+            question_vec = get_embedding(question, self._openai_api_key)
+            vec_results = _db.search_by_embedding(question_vec, k=20)
+            vec_ids = [r[0] for r in vec_results]
 
-            rows, _ = _db.search_documents(
-                query=fts_query,
-                document_type=hard_doc_type,
-                year=(params.get("year") or "").strip() or None,
-                email_only=bool(params.get("email_only")),
-                per_page=15,
-            )
+            # 3. Reciprocal Rank Fusion
+            K = 60
+            scores: dict[int, float] = {}
+            for rank, doc_id in enumerate(fts_ids):
+                scores[doc_id] = scores.get(doc_id, 0) + 1 / (K + rank + 1)
+            for rank, doc_id in enumerate(vec_ids):
+                scores[doc_id] = scores.get(doc_id, 0) + 1 / (K + rank + 1)
+
+            if scores:
+                merged_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:15]
+            else:
+                merged_ids = fts_ids[:15]
+
+            rows = [doc for doc_id in merged_ids if (doc := _db.get_document(doc_id))]
+
+            # 4. Build context and answer with GPT (single call)
             stats = _db.get_statistics()
             doc_lines = []
             for doc in rows:
@@ -464,8 +429,6 @@ class TelegramBot:
                 doc_lines.append(" | ".join(parts))
             context = "\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
 
-            from openai import OpenAI
-            client = OpenAI(api_key=self._openai_api_key)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -475,7 +438,7 @@ class TelegramBot:
                             "Du bist ein persönlicher Assistent für Meisters Dokumentenablage. "
                             "Beantworte Fragen auf Deutsch, präzise und freundlich. "
                             f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
-                            "Basiere deine Antwort auf den folgenden Suchergebnissen aus der Datenbank. "
+                            "Basiere deine Antwort auf den folgenden Suchergebnissen. "
                             "Wenn du die Frage damit nicht beantworten kannst, sage das ehrlich."
                         ),
                     },
@@ -486,8 +449,7 @@ class TelegramBot:
                 ],
                 max_tokens=400,
             )
-            answer = response.choices[0].message.content
-            self._send_plain(chat_id, answer)
+            self._send_plain(chat_id, response.choices[0].message.content)
 
             if rows and self._ablage_url:
                 keyboard = [
