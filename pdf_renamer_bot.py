@@ -173,7 +173,8 @@ class AblageBot:
         content_hash = hashlib.sha256(pdf_text.encode("utf-8", errors="replace")).hexdigest()
         duplicate_id = _db.find_duplicate_by_hash(content_hash)
         if duplicate_id:
-            print(f"⚠ Duplicate detected — matches document ID {duplicate_id}. Filing anyway.")
+            existing_name = (_db.get_document(duplicate_id) or {}).get("new_filename", "?")
+            print(f"⚠ Duplicate detected — matches document ID {duplicate_id} ({existing_name}). Filing anyway.")
 
         # Check for email sidecar uploaded by email-pdf-extractor
         email_context = None
@@ -254,13 +255,17 @@ class AblageBot:
             message=f"{final_stem}" + (f" · {metadata.get('document_type')}" if metadata.get("document_type") else ""),
         )
         if _telegram and new_doc_id:
-            _telegram.notify_new_document(
-                doc_id=new_doc_id,
-                filename=final_stem,
-                doc_type=metadata.get("document_type"),
-                doc_date=metadata.get("date"),
-                email_from=email_context.get("from") if email_context else None,
-            )
+            if duplicate_id:
+                existing_name = (_db.get_document(duplicate_id) or {}).get("new_filename", "?")
+                _telegram.notify_duplicate(new_doc_id, final_stem, duplicate_id, existing_name)
+            else:
+                _telegram.notify_new_document(
+                    doc_id=new_doc_id,
+                    filename=final_stem,
+                    doc_type=metadata.get("document_type"),
+                    doc_date=metadata.get("date"),
+                    email_from=email_context.get("from") if email_context else None,
+                )
 
         # Delete the sidecar now that it's been consumed
         if sidecar_item_id:
@@ -302,13 +307,19 @@ class AblageBot:
 _telegram: TelegramBot | None = None
 
 
-def _init_telegram() -> None:
+def _init_telegram(graph=None, source_folder_id: str = "") -> None:
     global _telegram
     token = os.getenv("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     if token and chat_id:
-        ablage_url = os.getenv("ABLAGE_URL", "")
-        _telegram = TelegramBot(token, chat_id, ablage_url)
+        _telegram = TelegramBot(
+            token,
+            chat_id,
+            ablage_url=os.getenv("ABLAGE_URL", ""),
+            graph=graph,
+            source_folder_id=source_folder_id,
+            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+        )
         _telegram.start_polling()
         print("Telegram  : Bot gestartet, warte auf Nachrichten…")
 
@@ -335,9 +346,9 @@ def _notify_ha(title: str, message: str) -> None:
 def main():
     sys.stdout = _Tee(_LOG_FILE)
     _write_status("idle")
-    _init_telegram()
     try:
         bot = AblageBot()
+        _init_telegram(graph=bot.graph, source_folder_id=os.getenv("SOURCE_FOLDER_ID", ""))
         bot.run()
     except KeyboardInterrupt:
         print("\nExiting...")

@@ -1,6 +1,6 @@
 """
-Telegram bot for Ablage — sends document notifications with inline buttons
-and handles /suche commands and button callbacks.
+Telegram bot for Ablage — notifications, /statistik, /suche, duplicate alerts,
+PDF forwarding, and natural-language document queries.
 
 Required env vars:
     TELEGRAM_BOT_TOKEN   — from @BotFather
@@ -13,11 +13,16 @@ import json
 import threading
 import time
 import urllib.request
-from typing import Optional
+import urllib.parse
+from typing import TYPE_CHECKING, Optional
 
 import db as _db
 
+if TYPE_CHECKING:
+    from graph_client import GraphClient
+
 _MD_SPECIAL = r'\_*[]()~`>#+-=|{}.!'
+
 
 def _esc(text: str) -> str:
     """Escape text for Telegram MarkdownV2."""
@@ -27,10 +32,21 @@ def _esc(text: str) -> str:
 
 
 class TelegramBot:
-    def __init__(self, token: str, chat_id: str, ablage_url: str = ""):
+    def __init__(
+        self,
+        token: str,
+        chat_id: str,
+        ablage_url: str = "",
+        graph: Optional["GraphClient"] = None,
+        source_folder_id: str = "",
+        openai_api_key: str = "",
+    ):
         self._token = token
         self._chat_id = str(chat_id)
         self._ablage_url = ablage_url.rstrip("/")
+        self._graph = graph
+        self._source_folder_id = source_folder_id
+        self._openai_api_key = openai_api_key
         self._offset = 0
 
     # ------------------------------------------------------------------
@@ -52,20 +68,37 @@ class TelegramBot:
             f"📄 Ein neues Dokument vom Typ *{type_str}* wurde Meisters Ablage"
             f" hinzugefügt{date_str}:{source_str}\n_{_esc(filename)}_"
         )
-
         buttons = []
         if self._ablage_url:
             buttons.append({"text": "🔗 In Ablage öffnen", "url": f"{self._ablage_url}/document/{doc_id}"})
         buttons.append({"text": "★ Steuerrelevant", "callback_data": f"tax:{doc_id}:1"})
-
         self._send(self._chat_id, text, keyboard=[[b] for b in buttons])
+
+    def notify_duplicate(
+        self,
+        new_doc_id: int,
+        new_filename: str,
+        existing_doc_id: int,
+        existing_filename: str,
+    ) -> None:
+        text = (
+            f"⚠️ *Mögliches Duplikat erkannt*\n\n"
+            f"Neu archiviert: _{_esc(new_filename)}_\n"
+            f"Bereits vorhanden: _{_esc(existing_filename)}_\n\n"
+            f"Was soll mit dem neuen Dokument passieren?"
+        )
+        keyboard = [
+            [{"text": "✓ Behalten", "callback_data": f"dup_keep:{new_doc_id}"}],
+            [{"text": "🗑 Als Duplikat löschen", "callback_data": f"dup_del:{new_doc_id}"}],
+        ]
+        self._send(self._chat_id, text, keyboard=keyboard)
 
     def start_polling(self) -> None:
         t = threading.Thread(target=self._poll_loop, daemon=True, name="telegram-poll")
         t.start()
 
     # ------------------------------------------------------------------
-    # Internals
+    # Telegram API helpers
     # ------------------------------------------------------------------
 
     def _api(self, method: str, data: dict) -> dict:
@@ -79,12 +112,27 @@ class TelegramBot:
         with urllib.request.urlopen(req, timeout=40) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
+    def _api_get(self, method: str, params: Optional[dict] = None) -> dict:
+        qs = ("?" + urllib.parse.urlencode(params)) if params else ""
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{self._token}/{method}{qs}",
+        )
+        with urllib.request.urlopen(req, timeout=40) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
     def _send(self, chat_id: str, text: str, keyboard: Optional[list] = None) -> None:
         payload: dict = {"chat_id": chat_id, "text": text, "parse_mode": "MarkdownV2"}
         if keyboard:
             payload["reply_markup"] = {"inline_keyboard": keyboard}
         try:
             self._api("sendMessage", payload)
+        except Exception as e:
+            print(f"Warning   : Telegram sendMessage failed: {e}")
+
+    def _send_plain(self, chat_id: str, text: str) -> None:
+        """Send without Markdown parsing — safe for arbitrary content."""
+        try:
+            self._api("sendMessage", {"chat_id": chat_id, "text": text})
         except Exception as e:
             print(f"Warning   : Telegram sendMessage failed: {e}")
 
@@ -97,6 +145,21 @@ class TelegramBot:
             })
         except Exception:
             pass
+
+    def _edit_text(self, chat_id: str, message_id: int, text: str) -> None:
+        try:
+            self._api("editMessageText", {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "parse_mode": "MarkdownV2",
+            })
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Polling loop
+    # ------------------------------------------------------------------
 
     def _poll_loop(self) -> None:
         while True:
@@ -122,6 +185,10 @@ class TelegramBot:
         elif "message" in update:
             self._handle_message(update["message"])
 
+    # ------------------------------------------------------------------
+    # Callback handler
+    # ------------------------------------------------------------------
+
     def _handle_callback(self, cb: dict) -> None:
         data = cb.get("data", "")
         cb_id = cb["id"]
@@ -136,10 +203,8 @@ class TelegramBot:
                 _db.update_document(doc_id, tax_relevant=value)
                 answer = "Als steuerrelevant markiert ✓" if value else "Steuerrelevanz entfernt"
                 self._api("answerCallbackQuery", {"callback_query_id": cb_id, "text": answer})
-                # Toggle button for next press
                 new_value = 1 - value
                 new_label = "☆ Nicht steuerrelevant" if value else "★ Steuerrelevant"
-                # Rebuild keyboard: keep URL button if present, replace tax button
                 old_keyboard = msg.get("reply_markup", {}).get("inline_keyboard", [])
                 new_keyboard = []
                 for row in old_keyboard:
@@ -156,11 +221,49 @@ class TelegramBot:
                 print(f"Warning   : Tax toggle failed: {e}")
                 self._api("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Fehler aufgetreten"})
 
+        elif data.startswith("dup_keep:"):
+            self._api("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Dokument behalten ✓"})
+            if chat_id and message_id:
+                self._edit_text(chat_id, message_id, "✓ Dokument wurde behalten\\.")
+
+        elif data.startswith("dup_del:"):
+            doc_id = int(data.split(":")[1])
+            self._api("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Wird gelöscht…"})
+            try:
+                doc = _db.get_document(doc_id)
+                if doc and doc.get("onedrive_path") and self._graph:
+                    item = self._graph.get_item_by_path(doc["onedrive_path"])
+                    self._graph.delete_item(item["id"])
+                if doc:
+                    _db.delete_document(doc_id)
+                if chat_id and message_id:
+                    self._edit_text(chat_id, message_id, "🗑 Duplikat wurde gelöscht\\.")
+            except Exception as e:
+                print(f"Warning   : Duplicate delete failed: {e}")
+                if chat_id and message_id:
+                    self._edit_text(chat_id, message_id,
+                                    f"⚠️ Fehler beim Löschen: {_esc(str(e))}")
+
+    # ------------------------------------------------------------------
+    # Message handler
+    # ------------------------------------------------------------------
+
     def _handle_message(self, msg: dict) -> None:
-        text = (msg.get("text") or "").strip()
         chat_id = str(msg.get("chat", {}).get("id", ""))
 
-        if text.lower().startswith("/suche"):
+        # Only respond to the configured chat
+        if chat_id != self._chat_id:
+            return
+
+        # PDF document forwarded to bot
+        if msg.get("document"):
+            self._handle_pdf(chat_id, msg["document"])
+            return
+
+        text = (msg.get("text") or "").strip()
+        cmd = text.lower()
+
+        if cmd.startswith("/suche"):
             query = text[6:].strip()
             if not query:
                 self._send(chat_id, "Verwendung: `/suche Suchbegriff`")
@@ -168,15 +271,18 @@ class TelegramBot:
             try:
                 rows, total = _db.search_documents(query=query, per_page=5)
             except Exception as e:
-                self._send(chat_id, f"Fehler bei der Suche: {e}")
+                self._send(chat_id, f"Fehler bei der Suche: {_esc(str(e))}")
                 return
 
             if not rows:
-                self._send(chat_id, f"Keine Dokumente fuer \"{_esc(query)}\" gefunden\.")
+                self._send(chat_id, f"Keine Dokumente für \"{_esc(query)}\" gefunden\.")
                 return
 
             shown = len(rows)
-            lines = [f"🔍 *{total} Treffer fuer \"{_esc(query)}\"*" + (f" \(Top {shown}\)" if total > shown else "") + ":"]
+            lines = [
+                f"🔍 *{total} Treffer für \"{_esc(query)}\"*"
+                + (f" \\(Top {shown}\\)" if total > shown else "") + ":"
+            ]
             keyboard = []
             for doc in rows:
                 name = doc["new_filename"] or "-"
@@ -187,12 +293,119 @@ class TelegramBot:
 
             self._send(chat_id, "\n".join(lines), keyboard=keyboard or None)
 
-        elif text.lower().startswith("/start") or text.lower().startswith("/hilfe"):
+        elif cmd.startswith("/statistik"):
+            self._handle_statistik(chat_id)
+
+        elif cmd.startswith("/start") or cmd.startswith("/hilfe"):
             self._send(chat_id, (
                 "*Meisters Ablage Bot* 📄\n\n"
-                "Ich benachrichtige dich über neue Dokumente in deiner Ablage "
-                "und beantworte Suchanfragen\.\n\n"
-                "Befehle:\n"
-                "`/suche Begriff` \— Dokumente suchen\n"
-                "`/hilfe` \— diese Hilfe anzeigen"
+                "Ich benachrichtige dich über neue Dokumente und beantworte Fragen zur Ablage\\.\n\n"
+                "*Befehle:*\n"
+                "`/suche Begriff` — Dokumente suchen\n"
+                "`/statistik` — Archiv\\-Übersicht\n"
+                "`/hilfe` — diese Hilfe\n\n"
+                "*PDF einreichen:* Schicke mir einfach eine PDF\\-Datei — sie landet automatisch in deiner Ablage\\.\n\n"
+                "*Fragen stellen:* Schreibe eine normale Frage auf Deutsch, z\\.B\\. "
+                "_\"Welche Rechnungen habe ich von 2025?\"_"
             ))
+
+        elif text and not text.startswith("/"):
+            self._handle_natural_language(chat_id, text)
+
+    # ------------------------------------------------------------------
+    # Feature handlers
+    # ------------------------------------------------------------------
+
+    def _handle_statistik(self, chat_id: str) -> None:
+        stats = _db.get_statistics()
+        lines = ["📊 *Ablage Statistik*\n"]
+        lines.append(f"Dokumente gesamt: *{stats['total']}*")
+        lines.append(f"Diesen Monat: *{stats['this_month']}*")
+        lines.append(f"Letzten Monat: *{stats['last_month']}*")
+        lines.append(f"Steuerrelevant: *{stats['tax_relevant']}*")
+        lines.append(f"Per E\\-Mail eingegangen: *{stats['email_source']}*")
+        if stats["by_type"]:
+            lines.append("\n*Nach Dokumenttyp:*")
+            for doc_type, cnt in stats["by_type"]:
+                lines.append(f"  • {_esc(doc_type)}: {cnt}")
+        self._send(chat_id, "\n".join(lines))
+
+    def _handle_pdf(self, chat_id: str, document: dict) -> None:
+        if not self._graph or not self._source_folder_id:
+            self._send_plain(chat_id, "PDF-Empfang ist nicht konfiguriert.")
+            return
+        mime = document.get("mime_type", "")
+        filename = document.get("file_name") or "dokument.pdf"
+        if "pdf" not in mime.lower() and not filename.lower().endswith(".pdf"):
+            self._send_plain(chat_id, "Bitte sende nur PDF-Dateien.")
+            return
+        file_size = document.get("file_size", 0)
+        if file_size > 20 * 1024 * 1024:
+            self._send_plain(chat_id, "Die Datei ist zu groß (max. 20 MB).")
+            return
+
+        self._send_plain(chat_id, f"📥 Empfange {filename} …")
+        try:
+            file_info = self._api_get("getFile", {"file_id": document["file_id"]})
+            file_path = file_info["result"]["file_path"]
+            download_url = f"https://api.telegram.org/file/bot{self._token}/{file_path}"
+            with urllib.request.urlopen(download_url, timeout=60) as r:
+                content = r.read()
+            self._graph.upload_file(self._source_folder_id, filename, content)
+            self._send_plain(
+                chat_id,
+                f"✓ {filename} wurde hochgeladen und wird in Kürze verarbeitet und archiviert.",
+            )
+        except Exception as e:
+            print(f"Warning   : PDF upload failed: {e}")
+            self._send_plain(chat_id, f"Fehler beim Upload: {e}")
+
+    def _handle_natural_language(self, chat_id: str, question: str) -> None:
+        if not self._openai_api_key:
+            self._send_plain(chat_id, "KI-Fragen sind nicht konfiguriert (OPENAI_API_KEY fehlt).")
+            return
+        self._send_plain(chat_id, "🤔 Suche in der Ablage …")
+        try:
+            rows, _ = _db.search_documents(query=question, per_page=15)
+            stats = _db.get_statistics()
+            doc_lines = []
+            for doc in rows:
+                parts = [doc.get("new_filename", "")]
+                if doc.get("document_type"):
+                    parts.append(f"Typ: {doc['document_type']}")
+                if doc.get("document_date"):
+                    parts.append(f"Datum: {doc['document_date']}")
+                if doc.get("company"):
+                    parts.append(f"Firma: {doc['company']}")
+                if doc.get("sender"):
+                    parts.append(f"Absender: {doc['sender']}")
+                doc_lines.append(" | ".join(parts))
+            context = "\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
+
+            from openai import OpenAI
+            client = OpenAI(api_key=self._openai_api_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Du bist ein persönlicher Assistent für Meisters Dokumentenablage. "
+                            "Beantworte Fragen auf Deutsch, präzise und freundlich. "
+                            f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
+                            "Basiere deine Antwort auf den folgenden Suchergebnissen aus der Datenbank. "
+                            "Wenn du die Frage damit nicht beantworten kannst, sage das ehrlich."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Frage: {question}\n\nPassende Dokumente:\n{context}",
+                    },
+                ],
+                max_tokens=400,
+            )
+            answer = response.choices[0].message.content
+            self._send_plain(chat_id, answer)
+        except Exception as e:
+            print(f"Warning   : NL query failed: {e}")
+            self._send_plain(chat_id, f"Fehler bei der KI-Anfrage: {e}")

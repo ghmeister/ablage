@@ -383,6 +383,39 @@ def get_duplicate_groups() -> list[list[dict]]:
     return groups
 
 
+def get_statistics() -> dict:
+    """Return aggregate statistics about the document archive."""
+    with _conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+        this_month = conn.execute(
+            "SELECT COUNT(*) FROM documents "
+            "WHERE substr(scan_timestamp,1,7) = strftime('%Y-%m','now')"
+        ).fetchone()[0]
+        last_month = conn.execute(
+            "SELECT COUNT(*) FROM documents "
+            "WHERE substr(scan_timestamp,1,7) = strftime('%Y-%m','now','-1 month')"
+        ).fetchone()[0]
+        tax_count = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE tax_relevant = 1"
+        ).fetchone()[0]
+        email_count = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE email_source = 1"
+        ).fetchone()[0]
+        by_type = conn.execute(
+            "SELECT document_type, COUNT(*) AS cnt FROM documents "
+            "WHERE document_type IS NOT NULL "
+            "GROUP BY document_type ORDER BY cnt DESC LIMIT 8"
+        ).fetchall()
+    return {
+        "total": total,
+        "this_month": this_month,
+        "last_month": last_month,
+        "tax_relevant": tax_count,
+        "email_source": email_count,
+        "by_type": [(r[0], r[1]) for r in by_type],
+    }
+
+
 def _sanitize_fts_query(query: str) -> str:
     """Convert a user search string into a safe FTS5 MATCH expression."""
     for ch in ('"', "'", '(', ')', '-', '+', '^', '*', ':', '.', ','):

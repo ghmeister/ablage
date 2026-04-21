@@ -235,6 +235,35 @@ class GraphClient:
 
         raise GraphAPIError(f"Could not find a free filename after 99 attempts (base: {new_name})")
 
+    def upload_file(self, parent_id: str, filename: str, content: bytes) -> dict:
+        """Upload a file into a folder. Simple PUT ≤ 4 MB, upload session for larger files."""
+        from urllib.parse import quote as _quote
+        encoded = _quote(filename, safe="")
+
+        if len(content) <= 4 * 1024 * 1024:
+            url = f"{self.drive_base}/items/{parent_id}:/{encoded}:/content"
+            resp = self.request("PUT", url, data=content,
+                                headers={"Content-Type": "application/octet-stream"})
+            return resp.json()
+
+        # Upload session for files > 4 MB
+        session_url = f"{self.drive_base}/items/{parent_id}:/{encoded}:/createUploadSession"
+        session = self.request("POST", session_url, json={"item": {}}).json()
+        upload_url = session["uploadUrl"]
+        chunk = 10 * 1024 * 1024  # 10 MB chunks
+        total = len(content)
+        result: dict = {}
+        for start in range(0, total, chunk):
+            end = min(start + chunk, total) - 1
+            hdrs = {
+                "Content-Range": f"bytes {start}-{end}/{total}",
+                "Content-Type": "application/octet-stream",
+            }
+            resp = self.session.put(upload_url, data=content[start:end + 1], headers=hdrs, timeout=120)
+            if resp.ok and resp.content:
+                result = resp.json()
+        return result
+
     def delete_item(self, item_id: str) -> None:
         """Permanently delete a drive item by its ID."""
         url = f"{self.drive_base}/items/{item_id}"
