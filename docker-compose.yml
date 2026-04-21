@@ -38,8 +38,6 @@ services:
         image: ghcr.io/minenmaster/pdf-renamer:latest
         restart: unless-stopped
         command: ["python", "web/app.py"]
-        ports:
-            - "5000:5000"
         environment:
             - DB_PATH=/data/documents.db
             # Required for category reclassify and file rename features:
@@ -56,6 +54,12 @@ services:
             - doc_data:/data
             # Optional: mount OneDrive archive for PDF preview
             # - /path/on/minipc/OneDrive/Scanbot/Ablage:/archive:ro
+        networks:
+            - proxy
 
 volumes:
     doc_data:
+
+networks:
+    proxy:
+        external: true
