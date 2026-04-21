@@ -400,6 +400,11 @@ class TelegramBot:
             vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=self._nl_max_distance)
             vec_ids = [r[0] for r in vec_results]
 
+            from db import _vec_available
+            print(f"NL search : fts_query={fts_query!r} fts_hits={len(fts_ids)} "
+                  f"vec_hits={len(vec_ids)} vec_available={_vec_available} "
+                  f"max_distance={self._nl_max_distance}")
+
             # 3. Reciprocal Rank Fusion — documents appearing in both lists rank highest
             K = 60
             scores: dict[int, float] = {}
