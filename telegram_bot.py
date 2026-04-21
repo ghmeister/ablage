@@ -403,6 +403,7 @@ class TelegramBot:
                         "- year: 4-digit year string, or null\n"
                         "- email_only: true if the question specifically asks about emails, otherwise false\n"
                         "- keywords: list of meaningful search terms (names, topics) — "
+                        "use singular/base forms (e.g. 'Spendenbescheinigung' not 'Spendenbescheinigungen'), "
                         "exclude common words and question words\n\n"
                         "Available document types:\n" + type_lines
                     ),
