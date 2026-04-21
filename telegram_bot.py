@@ -418,6 +418,8 @@ class TelegramBot:
                 merged_ids = fts_ids[:15]
 
             rows = [doc for doc_id in merged_ids if (doc := _db.get_document(doc_id))]
+            # Sort by date descending so GPT can answer recency questions correctly
+            rows.sort(key=lambda d: d.get("document_date") or "", reverse=True)
 
             # 4. Build context and answer with GPT (single call, structured output)
             stats = _db.get_statistics()
@@ -445,7 +447,7 @@ class TelegramBot:
                             "Du bist ein persönlicher Assistent für Meisters Dokumentenablage. "
                             "Beantworte Fragen auf Deutsch, präzise und freundlich. "
                             f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
-                            "Die folgenden Dokumente sind top Suchergebnisse — nach Relevanz sortiert, "
+                            "Die folgenden Dokumente sind top Suchergebnisse — nach Datum absteigend sortiert (neuestes zuerst), "
                             "können aber auch ähnliche (nicht exakt passende) Treffer enthalten. "
                             "Beantworte die Frage präzise anhand der Dokumente, die wirklich passen. "
                             "Ignoriere Dokumente, die nicht zur Frage passen. "
