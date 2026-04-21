@@ -272,7 +272,7 @@
 // ---------- Open in Gmail (iOS app scheme + web fallback) ----------
 function openGmail(messageId) {
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const webUrl = `https://mail.google.com/mail/u/0/?search=query&q=rfc822msgid:${encodeURIComponent(messageId)}`;
+  const webUrl = `https://mail.google.com/mail/u/0/#search/rfc822msgid:${messageId}`;
   if (isIOS) {
     const appUrl = `googlegmail:///search?q=rfc822msgid:${encodeURIComponent(messageId)}`;
     const iframe = document.createElement('iframe');
