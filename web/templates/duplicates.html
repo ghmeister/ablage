@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Duplikate – Meisters Ablage{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-3 gap-3">
+  <h4 class="mb-0">Duplikate</h4>
+  <span class="badge bg-warning text-dark">{{ groups | length }} Gruppen</span>
+  <span class="text-muted small ms-auto">Wähle pro Gruppe das Dokument, das du behalten möchtest. Die anderen werden gelöscht.</span>
+</div>
+
+{% if not groups %}
+<div class="alert alert-success">Keine Duplikate gefunden.</div>
+{% endif %}
+
+<div id="groupList">
+{% for group in groups %}
+<div class="card mb-4 shadow-sm" id="group-{{ loop.index }}" data-group="{{ loop.index }}">
+  <div class="card-header d-flex align-items-center gap-2 py-2">
+    <span class="badge bg-secondary">{{ group | length }}×</span>
+    <span class="small text-muted">{{ group[0].content_hash[:16] }}…</span>
+    <button class="btn btn-danger btn-sm ms-auto"
+            onclick="resolveGroup({{ loop.index }})">
+      Auflösen
+    </button>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:2.5rem" class="ps-3">Behalten</th>
+          <th>Dateiname</th>
+          <th>Typ</th>
+          <th>Datum</th>
+          <th>Pfad</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in group %}
+        <tr>
+          <td class="ps-3">
+            <input type="radio" name="keep-{{ loop.parent.index }}"
+                   value="{{ doc.id }}" class="form-check-input"
+                   {% if loop.first %}checked{% endif %}>
+          </td>
+          <td class="small">
+            <a href="/document/{{ doc.id }}" target="_blank" class="text-decoration-none">
+              {{ doc.new_filename or '–' }}
+            </a>
+          </td>
+          <td class="small text-muted">{{ type_labels.get(doc.document_type or '', doc.document_type or '–') }}</td>
+          <td class="small text-muted text-nowrap">{{ doc.document_date or '–' }}</td>
+          <td class="small text-muted text-break" style="max-width:260px;font-size:0.72rem">{{ doc.onedrive_path or '–' }}</td>
+          <td class="text-end pe-2">
+            <a href="/document/{{ doc.id }}" target="_blank"
+               class="btn btn-outline-secondary btn-sm py-0 px-1" style="font-size:0.7rem">↗</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1100">
+  <div id="toast" class="toast align-items-center text-bg-success border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMsg"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+async function resolveGroup(groupIndex) {
+  const card = document.getElementById(`group-${groupIndex}`);
+  const radios = card.querySelectorAll(`input[name="keep-${groupIndex}"]`);
+  const keepId = [...radios].find(r => r.checked)?.value;
+  if (!keepId) return;
+
+  const deleteIds = [...radios]
+    .filter(r => !r.checked)
+    .map(r => parseInt(r.value));
+
+  const btn = card.querySelector('button.btn-danger');
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  try {
+    const resp = await fetch('/api/documents/bulk-delete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids: deleteIds}),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+    card.style.transition = 'opacity .3s';
+    card.style.opacity = '0';
+    setTimeout(() => card.remove(), 300);
+
+    const msg = document.getElementById('toastMsg');
+    msg.textContent = `${data.deleted.length} Duplikat(e) gelöscht.`;
+    bootstrap.Toast.getOrCreateInstance(document.getElementById('toast'), {delay: 3000}).show();
+  } catch(e) {
+    alert('Fehler: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Auflösen';
+  }
+}
+</script>
+{% endblock %}

@@ -406,6 +406,12 @@ def update_metadata(doc_id: int):
     return jsonify(updates)
 
 
+@app.route("/duplicates")
+def duplicates():
+    groups = db_module.get_duplicate_groups()
+    return render_template("duplicates.html", groups=groups, type_labels=TYPE_LABELS)
+
+
 @app.route("/steuern")
 def steuern():
     year = request.args.get("year", "").strip()

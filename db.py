@@ -366,6 +366,23 @@ def get_tax_relevant_documents(year: Optional[str] = None) -> tuple[list[dict], 
     return [dict(r) for r in rows], years
 
 
+def get_duplicate_groups() -> list[list[dict]]:
+    """Return groups of documents sharing the same content_hash (2+ per group)."""
+    with _conn() as conn:
+        hashes = conn.execute(
+            "SELECT content_hash FROM documents WHERE content_hash IS NOT NULL "
+            "GROUP BY content_hash HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC"
+        ).fetchall()
+        groups = []
+        for (h,) in hashes:
+            rows = conn.execute(
+                "SELECT * FROM documents WHERE content_hash = ? ORDER BY id",
+                (h,),
+            ).fetchall()
+            groups.append([dict(r) for r in rows])
+    return groups
+
+
 def _sanitize_fts_query(query: str) -> str:
     """Convert a user search string into a safe FTS5 MATCH expression."""
     for ch in ('"', "'", '(', ')', '-', '+', '^', '*', ':', '.', ','):
