@@ -310,8 +310,6 @@ def search_by_embedding(
                 "WHERE embedding MATCH vec_f32(?) ORDER BY distance LIMIT ?",
                 (blob, k),
             ).fetchall()
-            if rows:
-                print(f"Vec search: top raw distances = {[round(r[1],3) for r in rows[:5]]}")
             return [(r[0], r[1]) for r in rows if r[1] <= max_distance]
         except Exception:
             return []

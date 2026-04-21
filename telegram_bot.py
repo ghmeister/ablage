@@ -373,6 +373,9 @@ class TelegramBot:
         "von", "mit", "bei", "nach", "aus", "für", "durch", "wann", "wo",
         "wie", "was", "wer", "alle", "zeige", "zeig", "finde", "suche",
         "habe", "hatte", "bekommen", "erhalten", "zuletzt", "letzte", "letzten",
+        "dokument", "dokumente", "datei", "dateien", "unterlagen", "ablage",
+        "deren", "dessen", "absender", "empfänger", "betreff", "thema",
+        "gibt", "gibt es", "zeigen", "anzeigen", "auflisten", "liste",
     }
 
     def _fts_terms_from_question(self, question: str) -> Optional[str]:
@@ -400,11 +403,6 @@ class TelegramBot:
             vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=self._nl_max_distance)
             vec_ids = [r[0] for r in vec_results]
 
-            from db import _vec_available
-            top_distances = [round(d, 3) for _, d in vec_results[:3]]
-            print(f"NL search : fts_query={fts_query!r} fts_hits={len(fts_ids)} "
-                  f"vec_hits={len(vec_ids)} vec_available={_vec_available} "
-                  f"max_distance={self._nl_max_distance} top_distances={top_distances}")
 
             # 3. Reciprocal Rank Fusion — documents appearing in both lists rank highest
             K = 60
