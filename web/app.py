@@ -222,6 +222,10 @@ def document(doc_id: int) -> str:
         back_url = "/?" + "&".join(f"{k}={quote_plus(v)}" for k, v in _back_args.items() if v)
     else:
         back_url = request.referrer or "/"
+    duplicate_id = None
+    if doc.get("content_hash"):
+        duplicate_id = db_module.find_duplicate_by_hash(doc["content_hash"], exclude_id=doc_id)
+
     return render_template(
         "document.html",
         doc=doc,
@@ -230,6 +234,7 @@ def document(doc_id: int) -> str:
         type_labels=TYPE_LABELS,
         type_colors=TYPE_COLORS,
         back_url=back_url,
+        duplicate_id=duplicate_id,
     )
 
 

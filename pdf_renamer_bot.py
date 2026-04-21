@@ -5,6 +5,7 @@ from __future__ import annotations
 Ablage — AI-powered document archiving bot using Microsoft Graph delta polling.
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -153,6 +154,11 @@ class AblageBot:
         pdf_info = self.pdf_extractor.get_pdf_info_from_bytes(content)
         print(f"Extracted {len(pdf_text)} characters from PDF ({pdf_info.get('num_pages', 'unknown')} pages)")
 
+        content_hash = hashlib.sha256(pdf_text.encode("utf-8", errors="replace")).hexdigest()
+        duplicate_id = _db.find_duplicate_by_hash(content_hash)
+        if duplicate_id:
+            print(f"⚠ Duplicate detected — matches document ID {duplicate_id}. Filing anyway.")
+
         # Check for email sidecar uploaded by email-pdf-extractor
         email_context = None
         sidecar_item_id = None
@@ -220,6 +226,7 @@ class AblageBot:
                 email_subject=email_context.get("subject") if email_context else None,
                 email_date=email_context.get("date") if email_context else None,
                 email_message_id="".join(email_context.get("message_id", "").split()).strip("<>") if email_context else None,
+                content_hash=content_hash,
             )
             print(f"Indexed   : {final_name}")
         except Exception as e:

@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS documents (
     matched_rule       TEXT,
     tax_relevant       INTEGER NOT NULL DEFAULT 0,
     seen               INTEGER NOT NULL DEFAULT 0,
+    content_hash       TEXT,
     email_source       INTEGER NOT NULL DEFAULT 0,
     email_from         TEXT,
     email_subject      TEXT,
@@ -127,6 +128,7 @@ def init_db() -> None:
             "ALTER TABLE documents ADD COLUMN email_date TEXT",
             "ALTER TABLE documents ADD COLUMN email_message_id TEXT",
             "ALTER TABLE documents ADD COLUMN seen INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN content_hash TEXT",
         ]:
             try:
                 conn.execute(migration)
@@ -162,6 +164,7 @@ def insert_document(
     email_subject: Optional[str] = None,
     email_date: Optional[str] = None,
     email_message_id: Optional[str] = None,
+    content_hash: Optional[str] = None,
 ) -> int:
     """Insert a document record and return the new row id."""
     ts = scan_timestamp or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -172,15 +175,33 @@ def insert_document(
                 (scan_timestamp, original_filename, new_filename, destination_folder,
                  onedrive_path, document_type, document_date, sender, recipient,
                  company, keywords, extracted_text, matched_rule, tax_relevant,
-                 email_source, email_from, email_subject, email_date, email_message_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 email_source, email_from, email_subject, email_date, email_message_id,
+                 content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ts, original_filename, new_filename, destination_folder,
              onedrive_path, document_type, document_date, sender, recipient,
              company, keywords, extracted_text, matched_rule, tax_relevant,
-             email_source, email_from, email_subject, email_date, email_message_id),
+             email_source, email_from, email_subject, email_date, email_message_id,
+             content_hash),
         )
         return cur.lastrowid
+
+
+def find_duplicate_by_hash(content_hash: str, exclude_id: Optional[int] = None) -> Optional[int]:
+    """Return the id of an existing document with the same content hash, or None."""
+    with _conn() as conn:
+        if exclude_id:
+            row = conn.execute(
+                "SELECT id FROM documents WHERE content_hash = ? AND id != ? LIMIT 1",
+                (content_hash, exclude_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id FROM documents WHERE content_hash = ? LIMIT 1",
+                (content_hash,),
+            ).fetchone()
+        return row[0] if row else None
 
 
 def get_unseen_count() -> int:
