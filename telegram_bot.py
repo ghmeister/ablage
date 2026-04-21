@@ -360,13 +360,41 @@ class TelegramBot:
             print(f"Warning   : PDF upload failed: {e}")
             self._send_plain(chat_id, f"Fehler beim Upload: {e}")
 
+    # Common filler words that shouldn't be sent to FTS5
+    _STOP_WORDS = {
+        "i", "me", "my", "we", "you", "he", "she", "it", "they", "the", "a", "an",
+        "is", "are", "was", "were", "be", "been", "have", "has", "had", "do", "did",
+        "will", "would", "could", "should", "may", "might", "shall", "can",
+        "and", "or", "but", "if", "in", "on", "at", "to", "for", "of", "from",
+        "with", "by", "about", "into", "through", "during", "before", "after",
+        "when", "where", "which", "who", "whom", "what", "how", "why",
+        "this", "that", "these", "those", "there", "here",
+        "not", "no", "so", "up", "out", "as", "just", "than", "then", "some",
+        "any", "all", "also", "more", "most", "other", "such",
+        "ich", "mir", "mich", "wir", "sie", "er", "es", "ihr",
+        "der", "die", "das", "ein", "eine", "einen",
+        "ist", "war", "sind", "waren", "hat", "hatte", "haben",
+        "und", "oder", "aber", "wenn", "in", "an", "auf", "zu", "von",
+        "mit", "bei", "nach", "aus", "über", "unter", "für", "durch",
+        "wann", "wo", "wie", "was", "wer", "welche", "welchen",
+        "zuletzt", "letzte", "letzten", "letzter",
+        "habe", "hatte", "bekommen", "erhalten", "received", "last", "did", "get",
+    }
+
+    def _extract_search_terms(self, question: str) -> str:
+        """Strip stop words, keep meaningful terms for FTS5."""
+        tokens = [t.strip(".,!?;:\"'") for t in question.split()]
+        meaningful = [t for t in tokens if t.lower() not in self._STOP_WORDS and len(t) > 1]
+        return " ".join(meaningful) if meaningful else question
+
     def _handle_natural_language(self, chat_id: str, question: str) -> None:
         if not self._openai_api_key:
             self._send_plain(chat_id, "KI-Fragen sind nicht konfiguriert (OPENAI_API_KEY fehlt).")
             return
         self._send_plain(chat_id, "🤔 Suche in der Ablage …")
         try:
-            rows, _ = _db.search_documents(query=question, per_page=15)
+            search_terms = self._extract_search_terms(question)
+            rows, _ = _db.search_documents(query=search_terms, per_page=15)
             stats = _db.get_statistics()
             doc_lines = []
             for doc in rows:
