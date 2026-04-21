@@ -437,9 +437,14 @@ class TelegramBot:
             if doc_type and doc_type not in fts_terms:
                 fts_terms.append(doc_type)
             fts_query = " ".join(fts_terms) or None
+
+            # Only apply document_type as a hard SQL filter if it's a real DB value
+            known_types = set(_db.get_distinct_values("document_type"))
+            hard_doc_type = doc_type if doc_type in known_types else None
+
             rows, _ = _db.search_documents(
                 query=fts_query,
-                document_type=doc_type or None,
+                document_type=hard_doc_type,
                 year=(params.get("year") or "").strip() or None,
                 email_only=bool(params.get("email_only")),
                 per_page=15,
