@@ -363,19 +363,36 @@ class TelegramBot:
             self._send_plain(chat_id, f"Fehler beim Upload: {e}")
 
     _NL_STOP_WORDS = {
+        # English
         "i", "me", "my", "we", "you", "the", "a", "an", "is", "are", "was",
         "have", "has", "do", "did", "will", "would", "could", "should", "can",
         "and", "or", "but", "in", "on", "at", "to", "for", "of", "from",
         "with", "by", "when", "where", "what", "how", "who", "this", "that",
         "not", "all", "any", "some", "show", "find", "get", "give", "tell",
-        "ich", "mir", "wir", "sie", "der", "die", "das", "ein", "eine",
-        "ist", "war", "hat", "und", "oder", "wenn", "in", "an", "auf", "zu",
-        "von", "mit", "bei", "nach", "aus", "für", "durch", "wann", "wo",
-        "wie", "was", "wer", "alle", "zeige", "zeig", "finde", "suche",
-        "habe", "hatte", "bekommen", "erhalten", "zuletzt", "letzte", "letzten",
+        "which", "last", "latest", "recent", "received", "sent", "got",
+        # German pronouns / articles
+        "ich", "mir", "mich", "wir", "uns", "sie", "ihr", "ihnen",
+        "der", "die", "das", "dem", "den", "des", "ein", "eine", "einem", "einen", "eines",
+        # German question words & determiners
+        "wann", "wo", "wie", "was", "wer", "wen", "wem", "wessen",
+        "welche", "welches", "welchen", "welchem", "welcher",
+        "welch",
+        # German verbs / auxiliaries
+        "ist", "war", "sind", "waren", "hat", "hatte", "haben", "hatten",
+        "bin", "wird", "wurde", "wurden", "werden",
+        "und", "oder", "aber", "wenn", "denn", "weil", "dass",
+        # German prepositions
+        "in", "an", "auf", "zu", "von", "mit", "bei", "nach", "aus", "für",
+        "durch", "über", "unter", "neben", "zwischen", "vor", "hinter",
+        # German adverbs / question context
+        "alle", "zeige", "zeig", "finde", "suche", "zeigen", "anzeigen", "auflisten", "liste",
+        "habe", "hatte", "bekommen", "erhalten", "zuletzt", "letzte", "letzten", "letzter",
+        "neueste", "neuesten", "neuester", "aktuell", "aktuellste", "aktuellsten",
+        "erste", "ersten", "erster",
+        # Document meta words
         "dokument", "dokumente", "datei", "dateien", "unterlagen", "ablage",
         "deren", "dessen", "absender", "empfänger", "betreff", "thema",
-        "gibt", "gibt es", "zeigen", "anzeigen", "auflisten", "liste",
+        "gibt",
     }
 
     def _fts_terms_from_question(self, question: str) -> Optional[str]:
