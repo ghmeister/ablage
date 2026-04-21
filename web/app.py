@@ -22,7 +22,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import db as db_module
-from flask import Flask, abort, jsonify, render_template, request, send_file, url_for, Response
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, session, url_for, Response
 
 _archive_root_env = os.getenv("ARCHIVE_ROOT", "").strip()
 _ARCHIVE_ROOT = Path(_archive_root_env).resolve() if _archive_root_env else None
@@ -32,6 +32,7 @@ _STATUS_FILE = _data_dir / "bot_status.json"
 _LOG_FILE    = _data_dir / "bot.log"
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
 _UI_USER = os.getenv("UI_USER", "").strip()
 _UI_PASSWORD = os.getenv("UI_PASSWORD", "").strip()
@@ -41,13 +42,29 @@ _UI_PASSWORD = os.getenv("UI_PASSWORD", "").strip()
 def _require_auth():
     if not (_UI_USER and _UI_PASSWORD):
         return  # auth not configured — allow all (dev/local)
-    auth = request.authorization
-    if not auth or auth.username != _UI_USER or auth.password != _UI_PASSWORD:
-        return Response(
-            "Authentication required",
-            401,
-            {"WWW-Authenticate": 'Basic realm="Ablage"'},
-        )
+    if request.endpoint in ("login", "static"):
+        return
+    if not session.get("logged_in"):
+        return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        if (request.form.get("username") == _UI_USER
+                and request.form.get("password") == _UI_PASSWORD):
+            session.permanent = True
+            session["logged_in"] = True
+            return redirect(request.args.get("next") or "/")
+        error = "Ungültige Zugangsdaten"
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 # ---------------------------------------------------------------------------
 # Load type labels/colors from classification_rules.yaml (single source of truth)
