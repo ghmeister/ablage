@@ -26,6 +26,10 @@ services:
             - POLL_INTERVAL_SECONDS=30
             - MAX_FILENAME_LENGTH=100
             - DB_PATH=/data/documents.db
+            # Optional: Home Assistant push notifications
+            # - HA_URL=http://homeassistant:8123
+            # - HA_TOKEN=your-long-lived-token
+            # - HA_NOTIFY_SERVICE=mobile_app_manuels_iphone16
             # Uncomment to set timezone
             # - TZ=Europe/Zurich
         volumes:

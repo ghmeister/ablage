@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import sys
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -246,6 +247,11 @@ class AblageBot:
         except Exception as e:
             print(f"Warning   : DB write failed: {e}")
 
+        _notify_ha(
+            title="📄 Neues Dokument",
+            message=f"{final_stem}" + (f" · {metadata.get('document_type')}" if metadata.get("document_type") else ""),
+        )
+
         # Delete the sidecar now that it's been consumed
         if sidecar_item_id:
             try:
@@ -281,6 +287,25 @@ class AblageBot:
 
         print("Starting cloud delta polling...\n")
         self.monitor.start()
+
+
+def _notify_ha(title: str, message: str) -> None:
+    ha_url = os.getenv("HA_URL", "").rstrip("/")
+    ha_token = os.getenv("HA_TOKEN", "")
+    ha_service = os.getenv("HA_NOTIFY_SERVICE", "mobile_app_manuels_iphone16")
+    if not (ha_url and ha_token):
+        return
+    try:
+        payload = json.dumps({"title": title, "message": message}).encode()
+        req = urllib.request.Request(
+            f"{ha_url}/api/services/notify/{ha_service}",
+            data=payload,
+            headers={"Authorization": f"Bearer {ha_token}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"Warning   : HA notification failed: {e}")
 
 
 def main():
