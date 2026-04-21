@@ -482,6 +482,14 @@ class TelegramBot:
             )
             answer = response.choices[0].message.content
             self._send_plain(chat_id, answer)
+
+            if rows and self._ablage_url:
+                keyboard = [
+                    [{"text": (doc.get("new_filename") or "Dokument")[:60],
+                      "url": f"{self._ablage_url}/document/{doc['id']}"}]
+                    for doc in rows
+                ]
+                self._send(chat_id, "🔗 *Gefundene Dokumente:*", keyboard=keyboard)
         except Exception as e:
             print(f"Warning   : NL query failed: {e}")
             self._send_plain(chat_id, f"Fehler bei der KI-Anfrage: {e}")
