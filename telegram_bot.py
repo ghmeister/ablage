@@ -419,11 +419,12 @@ class TelegramBot:
 
             rows = [doc for doc_id in merged_ids if (doc := _db.get_document(doc_id))]
 
-            # 4. Build context and answer with GPT (single call)
+            # 4. Build context and answer with GPT (single call, structured output)
             stats = _db.get_statistics()
             doc_lines = []
+            id_to_doc = {doc["id"]: doc for doc in rows}
             for doc in rows:
-                parts = [doc.get("new_filename", "")]
+                parts = [f"[ID:{doc['id']}] {doc.get('new_filename', '')}"]
                 if doc.get("document_type"):
                     parts.append(f"Typ: {doc['document_type']}")
                 if doc.get("document_date"):
@@ -444,26 +445,44 @@ class TelegramBot:
                             "Du bist ein persönlicher Assistent für Meisters Dokumentenablage. "
                             "Beantworte Fragen auf Deutsch, präzise und freundlich. "
                             f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
-                            "Basiere deine Antwort auf den folgenden Suchergebnissen. "
-                            "Wenn du die Frage damit nicht beantworten kannst, sage das ehrlich."
+                            "Die folgenden Dokumente sind top Suchergebnisse — nach Relevanz sortiert, "
+                            "können aber auch ähnliche (nicht exakt passende) Treffer enthalten. "
+                            "Beantworte die Frage präzise anhand der Dokumente, die wirklich passen. "
+                            "Ignoriere Dokumente, die nicht zur Frage passen. "
+                            "Antworte im folgenden JSON-Format:\n"
+                            '{"answer": "<deine Antwort auf Deutsch>", "ids": [<IDs der wirklich passenden Dokumente>]}\n'
+                            "Gib nur JSON zurück, kein weiterer Text."
                         ),
                     },
                     {
                         "role": "user",
-                        "content": f"Frage: {question}\n\nPassende Dokumente:\n{context}",
+                        "content": f"Frage: {question}\n\nSuchergebnisse:\n{context}",
                     },
                 ],
-                max_tokens=400,
+                max_tokens=500,
+                response_format={"type": "json_object"},
             )
-            self._send_plain(chat_id, response.choices[0].message.content)
 
-            if rows and self._ablage_url:
+            import json as _json
+            try:
+                gpt_result = _json.loads(response.choices[0].message.content)
+                answer_text = gpt_result.get("answer", "")
+                referenced_ids = [int(i) for i in gpt_result.get("ids", [])]
+            except Exception:
+                answer_text = response.choices[0].message.content
+                referenced_ids = [doc["id"] for doc in rows]
+
+            self._send_plain(chat_id, answer_text)
+
+            # Only show links for documents GPT actually referenced
+            linked_docs = [id_to_doc[i] for i in referenced_ids if i in id_to_doc]
+            if linked_docs and self._ablage_url:
                 keyboard = [
                     [{"text": (doc.get("new_filename") or "Dokument")[:60],
                       "url": f"{self._ablage_url}/document/{doc['id']}"}]
-                    for doc in rows
+                    for doc in linked_docs
                 ]
-                self._send(chat_id, "🔗 *Gefundene Dokumente:*", keyboard=keyboard)
+                self._send(chat_id, "🔗 *Passende Dokumente:*", keyboard=keyboard)
         except Exception as e:
             print(f"Warning   : NL query failed: {e}")
             self._send_plain(chat_id, f"Fehler bei der KI-Anfrage: {e}")
