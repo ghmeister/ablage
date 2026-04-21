@@ -14,12 +14,13 @@
 
 <div id="groupList">
 {% for group in groups %}
-<div class="card mb-4 shadow-sm" id="group-{{ loop.index }}" data-group="{{ loop.index }}">
+{% set gi = loop.index %}
+<div class="card mb-4 shadow-sm" id="group-{{ gi }}" data-group="{{ gi }}">
   <div class="card-header d-flex align-items-center gap-2 py-2">
     <span class="badge bg-secondary">{{ group | length }}×</span>
     <span class="small text-muted">{{ group[0].content_hash[:16] }}…</span>
     <button class="btn btn-danger btn-sm ms-auto"
-            onclick="resolveGroup({{ loop.index }})">
+            onclick="resolveGroup({{ gi }})">
       Auflösen
     </button>
   </div>
@@ -39,7 +40,7 @@
         {% for doc in group %}
         <tr>
           <td class="ps-3">
-            <input type="radio" name="keep-{{ loop.parent.index }}"
+            <input type="radio" name="keep-{{ gi }}"
                    value="{{ doc.id }}" class="form-check-input"
                    {% if loop.first %}checked{% endif %}>
           </td>
