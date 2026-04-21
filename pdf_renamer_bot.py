@@ -38,17 +38,31 @@ def _write_status(status: str, filename: str = "") -> None:
 
 
 class _Tee:
-    """Write to both stdout and a log file simultaneously."""
+    """Write to both stdout and a log file simultaneously, prepending timestamps."""
     def __init__(self, log_path: Path, max_bytes: int = 2 * 1024 * 1024):
         self._log_path = log_path
         self._max_bytes = max_bytes
         self._orig = sys.stdout
+        self._at_line_start = True
         log_path.parent.mkdir(parents=True, exist_ok=True)
         self._f = open(log_path, "a", encoding="utf-8", buffering=1)
 
+    def _stamp(self) -> str:
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC") + "  "
+
     def write(self, data: str) -> int:
         self._orig.write(data)
-        self._f.write(data)
+        # Prepend timestamp at the start of each new line
+        out = []
+        for ch in data:
+            if self._at_line_start and ch != "\n":
+                out.append(self._stamp())
+                self._at_line_start = False
+            out.append(ch)
+            if ch == "\n":
+                self._at_line_start = True
+        self._f.write("".join(out))
         # Truncate if log gets too large (keep last 75%)
         try:
             if self._f.tell() > self._max_bytes:
