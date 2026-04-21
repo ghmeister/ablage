@@ -360,17 +360,35 @@ class TelegramBot:
             print(f"Warning   : PDF upload failed: {e}")
             self._send_plain(chat_id, f"Fehler beim Upload: {e}")
 
-    # Known document types stored in the DB (German labels used by the AI renamer)
-    _DOC_TYPES = [
-        "Rechnung", "Offerte", "Vertrag", "Versicherungspolice", "Kontoauszug",
-        "Lohnausweis", "Steuerdokument", "Mahnung", "Behördenschreiben",
-        "Arztbericht", "Brief", "Lieferschein", "Garantie", "Kündigung",
-    ]
+    # Known document types with descriptions for the NL extraction prompt
+    _DOC_TYPE_DESCRIPTIONS = {
+        "Rechnung":            "invoice, bill, payment request (Faktura, Quittung, Jahresrechnung)",
+        "Offerte":             "quote, offer, proposal, cost estimate (Angebot, Kostenvoranschlag)",
+        "Vertrag":             "contract, agreement, terms (Mietvertrag, Arbeitsvertrag)",
+        "Versicherungspolice": "insurance policy, coverage document",
+        "Kontoauszug":         "bank statement, account statement",
+        "Lohnausweis":         "salary certificate, pay slip",
+        "Steuerdokument":      "tax document, tax return, tax certificate",
+        "Mahnung":             "reminder, dunning letter, overdue notice",
+        "Behördenschreiben":   "official letter from authorities, government correspondence",
+        "Arztbericht":         "medical report, doctor's letter, lab results",
+        "Brief":               "general letter or correspondence",
+        "Lieferschein":        "delivery note, shipping document",
+        "Garantie":            "warranty, guarantee certificate",
+        "Kündigung":           "termination notice, cancellation",
+    }
+    # Fallback list if DB has no types yet
+    _DOC_TYPES = list(_DOC_TYPE_DESCRIPTIONS.keys())
 
     def _extract_search_params(self, client, question: str) -> dict:
         """Ask GPT to extract structured DB filters from a natural-language question."""
         known_types = _db.get_distinct_values("document_type")
-        types_list = ", ".join(known_types) if known_types else ", ".join(self._DOC_TYPES)
+        if not known_types:
+            known_types = self._DOC_TYPES
+        type_lines = "\n".join(
+            f'  "{t}": {self._DOC_TYPE_DESCRIPTIONS.get(t, "")}'
+            for t in known_types
+        )
         result = client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={"type": "json_object"},
@@ -380,11 +398,12 @@ class TelegramBot:
                     "content": (
                         "Extract search parameters from the user's question about their document archive. "
                         "Return a JSON object with these keys (use null if not applicable):\n"
-                        f"- document_type: must be exactly one of [{types_list}] or null\n"
+                        "- document_type: must be exactly one of the keys below, or null\n"
                         "- sender: company or person name, or null\n"
                         "- year: 4-digit year string, or null\n"
                         "- keywords: list of meaningful search terms (names, topics) — "
-                        "exclude common words and question words"
+                        "exclude common words and question words\n\n"
+                        "Available document types:\n" + type_lines
                     ),
                 },
                 {"role": "user", "content": question},
