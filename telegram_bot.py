@@ -17,6 +17,14 @@ from typing import Optional
 
 import db as _db
 
+_MD_SPECIAL = r'\_*[]()~`>#+-=|{}.!'
+
+def _esc(text: str) -> str:
+    """Escape text for Telegram MarkdownV2."""
+    for ch in _MD_SPECIAL:
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
 
 class TelegramBot:
     def __init__(self, token: str, chat_id: str, ablage_url: str = ""):
@@ -37,12 +45,12 @@ class TelegramBot:
         doc_date: Optional[str],
         email_from: Optional[str] = None,
     ) -> None:
-        type_str = doc_type or "Unbekannt"
-        date_str = f" vom {doc_date}" if doc_date else ""
-        source_str = f"\n✉ Per E-Mail von _{email_from}_" if email_from else ""
+        type_str = _esc(doc_type or "Unbekannt")
+        date_str = f" vom {_esc(doc_date)}" if doc_date else ""
+        source_str = f"\n✉ Per E\-Mail von _{_esc(email_from)}_" if email_from else ""
         text = (
             f"📄 Ein neues Dokument vom Typ *{type_str}* wurde Meisters Ablage"
-            f" hinzugefügt{date_str}:{source_str}\n_{filename}_"
+            f" hinzugefügt{date_str}:{source_str}\n_{_esc(filename)}_"
         )
 
         buttons = []
@@ -72,7 +80,7 @@ class TelegramBot:
             return json.loads(resp.read().decode("utf-8"))
 
     def _send(self, chat_id: str, text: str, keyboard: Optional[list] = None) -> None:
-        payload: dict = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        payload: dict = {"chat_id": chat_id, "text": text, "parse_mode": "MarkdownV2"}
         if keyboard:
             payload["reply_markup"] = {"inline_keyboard": keyboard}
         try:
@@ -164,16 +172,16 @@ class TelegramBot:
                 return
 
             if not rows:
-                self._send(chat_id, f"Keine Dokumente fuer \"{query}\" gefunden.")
+                self._send(chat_id, f"Keine Dokumente fuer \"{_esc(query)}\" gefunden\.")
                 return
 
             shown = len(rows)
-            lines = [f"🔍 *{total} Treffer fuer \"{query}\"*" + (f" (Top {shown})" if total > shown else "") + ":"]
+            lines = [f"🔍 *{total} Treffer fuer \"{_esc(query)}\"*" + (f" \(Top {shown}\)" if total > shown else "") + ":"]
             keyboard = []
             for doc in rows:
-                name = doc["new_filename"] or "–"
-                date = f" · {doc['document_date']}" if doc.get("document_date") else ""
-                lines.append(f"• _{name}_{date}")
+                name = doc["new_filename"] or "-"
+                date = f" · {_esc(doc['document_date'])}" if doc.get("document_date") else ""
+                lines.append(f"• _{_esc(name)}_{date}")
                 if self._ablage_url:
                     keyboard.append([{"text": name[:60], "url": f"{self._ablage_url}/document/{doc['id']}"}])
 
@@ -183,8 +191,8 @@ class TelegramBot:
             self._send(chat_id, (
                 "*Meisters Ablage Bot* 📄\n\n"
                 "Ich benachrichtige dich über neue Dokumente in deiner Ablage "
-                "und beantworte Suchanfragen.\n\n"
+                "und beantworte Suchanfragen\.\n\n"
                 "Befehle:\n"
-                "`/suche <Begriff>` — Dokumente suchen\n"
-                "`/hilfe` — diese Hilfe anzeigen"
+                "`/suche Begriff` \— Dokumente suchen\n"
+                "`/hilfe` \— diese Hilfe anzeigen"
             ))
