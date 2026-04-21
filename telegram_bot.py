@@ -369,7 +369,8 @@ class TelegramBot:
 
     def _extract_search_params(self, client, question: str) -> dict:
         """Ask GPT to extract structured DB filters from a natural-language question."""
-        types_list = ", ".join(self._DOC_TYPES)
+        known_types = _db.get_distinct_values("document_type")
+        types_list = ", ".join(known_types) if known_types else ", ".join(self._DOC_TYPES)
         result = client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={"type": "json_object"},
@@ -379,7 +380,7 @@ class TelegramBot:
                     "content": (
                         "Extract search parameters from the user's question about their document archive. "
                         "Return a JSON object with these keys (use null if not applicable):\n"
-                        f"- document_type: one of [{types_list}] or null\n"
+                        f"- document_type: must be exactly one of [{types_list}] or null\n"
                         "- sender: company or person name, or null\n"
                         "- year: 4-digit year string, or null\n"
                         "- keywords: list of meaningful search terms (names, topics) — "
