@@ -265,7 +265,7 @@
 <button id="taxBtn"
         class="btn btn-sm ms-2 {% if doc.tax_relevant %}btn-warning{% else %}btn-outline-secondary{% endif %}"
         title="Steuerrelevanz umschalten">
-  {% if doc.tax_relevant %}★ Steuerrelevant{% else %}☆ Steuerrelevant{% endif %}
+  {% if doc.tax_relevant %}★ Steuerrelevant{% else %}☆ Als steuerrelevant markieren{% endif %}
 </button>
 
 <script>
@@ -315,7 +315,7 @@ fetch('/api/documents/{{ doc.id }}/seen', {method: 'POST'}).catch(() => {});
       if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
       taxRelevant = newValue;
       taxBtn.className = `btn btn-sm ms-2 ${newValue ? 'btn-warning' : 'btn-outline-secondary'}`;
-      taxBtn.textContent = newValue ? '★ Steuerrelevant' : '☆ Steuerrelevant';
+      taxBtn.textContent = newValue ? '★ Steuerrelevant' : '☆ Als steuerrelevant markieren';
     } catch(e) {
       alert('Fehler: ' + e.message);
     } finally {
