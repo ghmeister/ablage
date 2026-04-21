@@ -164,11 +164,11 @@ class TelegramBot:
                 return
 
             if not rows:
-                self._send(chat_id, f"Keine Dokumente für „{query}" gefunden.")
+                self._send(chat_id, f"Keine Dokumente fuer \"{query}\" gefunden.")
                 return
 
             shown = len(rows)
-            lines = [f"🔍 *{total} Treffer für „{query}"*" + (f" (Top {shown})" if total > shown else "") + ":"]
+            lines = [f"🔍 *{total} Treffer fuer \"{query}\"*" + (f" (Top {shown})" if total > shown else "") + ":"]
             keyboard = []
             for doc in rows:
                 name = doc["new_filename"] or "–"
