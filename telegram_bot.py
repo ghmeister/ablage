@@ -426,12 +426,20 @@ class TelegramBot:
             client = OpenAI(api_key=self._openai_api_key)
 
             params = self._extract_search_params(client, question)
-            fts_query = " ".join(params.get("keywords") or []) or None
+            # Build FTS terms: keywords + sender + document_type so all indexed
+            # fields are searched (filename, company, keywords, extracted_text, etc.)
+            fts_terms = list(params.get("keywords") or [])
+            sender = (params.get("sender") or "").strip()
+            doc_type = (params.get("document_type") or "").strip()
+            if sender and sender not in fts_terms:
+                fts_terms.append(sender)
+            if doc_type and doc_type not in fts_terms:
+                fts_terms.append(doc_type)
+            fts_query = " ".join(fts_terms) or None
             rows, _ = _db.search_documents(
                 query=fts_query,
-                document_type=params.get("document_type") or None,
-                sender=params.get("sender") or None,
-                year=params.get("year") or None,
+                document_type=doc_type or None,
+                year=(params.get("year") or "").strip() or None,
                 email_only=bool(params.get("email_only")),
                 per_page=15,
             )
