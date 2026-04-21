@@ -169,8 +169,8 @@
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="badge bg-secondary">✉ Per E-Mail erhalten</span>
             {% if doc.email_message_id %}
-            <a href="https://mail.google.com/mail/u/0/#search/rfc822msgid:{{ doc.email_message_id | e }}"
-               target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary py-0 px-2"
+            <a href="#" onclick="openGmail({{ doc.email_message_id | tojson }}); return false;"
+               class="btn btn-sm btn-outline-secondary py-0 px-2"
                style="font-size:0.75rem">In Gmail öffnen ↗</a>
             {% endif %}
           </div>
@@ -267,6 +267,28 @@
         title="Steuerrelevanz umschalten">
   {% if doc.tax_relevant %}★ Steuerrelevant{% else %}☆ Steuerrelevant{% endif %}
 </button>
+
+<script>
+// ---------- Open in Gmail (iOS app scheme + web fallback) ----------
+function openGmail(messageId) {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const webUrl = `https://mail.google.com/mail/u/0/#search/rfc822msgid:${encodeURIComponent(messageId)}`;
+  if (isIOS) {
+    const appUrl = `googlegmail:///search?q=rfc822msgid:${encodeURIComponent(messageId)}`;
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = appUrl;
+    document.body.appendChild(iframe);
+    // Fall back to web if app didn't open within 600ms
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+      if (!document.hidden) window.open(webUrl, '_blank');
+    }, 600);
+  } else {
+    window.open(webUrl, '_blank');
+  }
+}
+</script>
 
 <script>
 // ---------- Auto-mark seen on page load ----------
