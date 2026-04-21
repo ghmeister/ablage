@@ -26,6 +26,7 @@ services:
             - POLL_INTERVAL_SECONDS=30
             - MAX_FILENAME_LENGTH=100
             - DB_PATH=/data/documents.db
+            - TOKEN_CACHE_PATH=/data/token_cache.json
             # Optional: Telegram notifications
             # - TELEGRAM_BOT_TOKEN=your-bot-token
             # - TELEGRAM_CHAT_ID=your-chat-id
