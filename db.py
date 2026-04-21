@@ -265,6 +265,7 @@ def search_documents(
     document_type: Optional[str] = None,
     year: Optional[str] = None,
     sender: Optional[str] = None,
+    email_only: bool = False,
     page: int = 1,
     per_page: int = 25,
     sort_by: str = "scan_timestamp",
@@ -295,8 +296,11 @@ def search_documents(
         params.append(year)
 
     if sender:
-        conds.append("(sender LIKE ? OR company LIKE ?)")
-        params.extend([f"%{sender}%", f"%{sender}%"])
+        conds.append("(sender LIKE ? OR company LIKE ? OR email_from LIKE ?)")
+        params.extend([f"%{sender}%", f"%{sender}%", f"%{sender}%"])
+
+    if email_only:
+        conds.append("email_source = 1")
 
     where = ("WHERE " + " AND ".join(conds)) if conds else ""
 

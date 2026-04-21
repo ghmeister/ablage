@@ -397,10 +397,11 @@ class TelegramBot:
                     "role": "system",
                     "content": (
                         "Extract search parameters from the user's question about their document archive. "
-                        "Return a JSON object with these keys (use null if not applicable):\n"
+                        "Return a JSON object with these keys (use null/false if not applicable):\n"
                         "- document_type: must be exactly one of the keys below, or null\n"
                         "- sender: company or person name, or null\n"
                         "- year: 4-digit year string, or null\n"
+                        "- email_only: true if the question specifically asks about emails, otherwise false\n"
                         "- keywords: list of meaningful search terms (names, topics) — "
                         "exclude common words and question words\n\n"
                         "Available document types:\n" + type_lines
@@ -431,6 +432,7 @@ class TelegramBot:
                 document_type=params.get("document_type") or None,
                 sender=params.get("sender") or None,
                 year=params.get("year") or None,
+                email_only=bool(params.get("email_only")),
                 per_page=15,
             )
             stats = _db.get_statistics()
