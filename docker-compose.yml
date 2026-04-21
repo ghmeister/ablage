@@ -26,6 +26,9 @@ services:
             - POLL_INTERVAL_SECONDS=30
             - MAX_FILENAME_LENGTH=100
             - DB_PATH=/data/documents.db
+            # Optional: Telegram notifications
+            # - TELEGRAM_BOT_TOKEN=your-bot-token
+            # - TELEGRAM_CHAT_ID=your-chat-id
             # Optional: Home Assistant push notifications
             # - HA_URL=http://homeassistant:8123
             # - HA_TOKEN=your-long-lived-token

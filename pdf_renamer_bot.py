@@ -247,10 +247,10 @@ class AblageBot:
         except Exception as e:
             print(f"Warning   : DB write failed: {e}")
 
-        _notify_ha(
-            title="📄 Neues Dokument",
-            message=f"{final_stem}" + (f" · {metadata.get('document_type')}" if metadata.get("document_type") else ""),
-        )
+        _notification_title = "📄 Neues Dokument"
+        _notification_body = f"{final_stem}" + (f" · {metadata.get('document_type')}" if metadata.get("document_type") else "")
+        _notify_ha(title=_notification_title, message=_notification_body)
+        _notify_telegram(title=_notification_title, message=_notification_body)
 
         # Delete the sidecar now that it's been consumed
         if sidecar_item_id:
@@ -287,6 +287,25 @@ class AblageBot:
 
         print("Starting cloud delta polling...\n")
         self.monitor.start()
+
+
+def _notify_telegram(title: str, message: str) -> None:
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not (token and chat_id):
+        return
+    try:
+        text = f"*{title}*\n{message}"
+        payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"Warning   : Telegram notification failed: {e}")
 
 
 def _notify_ha(title: str, message: str) -> None:
