@@ -395,10 +395,10 @@ class TelegramBot:
 
             # 2. Vector search — catches synonyms, plurals, cross-language matches
             question_vec = get_embedding(question, self._openai_api_key)
-            vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=0.55)
+            vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=0.75)
             vec_ids = [r[0] for r in vec_results]
 
-            # 3. Reciprocal Rank Fusion
+            # 3. Reciprocal Rank Fusion — documents appearing in both lists rank highest
             K = 60
             scores: dict[int, float] = {}
             for rank, doc_id in enumerate(fts_ids):
@@ -406,14 +406,8 @@ class TelegramBot:
             for rank, doc_id in enumerate(vec_ids):
                 scores[doc_id] = scores.get(doc_id, 0) + 1 / (K + rank + 1)
 
-            # Keep only documents that appear in vector results OR rank highly in FTS
-            min_score = 1 / (K + 6)  # equivalent to appearing in top-5 of one list
             if scores:
-                merged_ids = [
-                    doc_id for doc_id, score
-                    in sorted(scores.items(), key=lambda x: x[1], reverse=True)
-                    if score >= min_score
-                ][:8]
+                merged_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:8]
             else:
                 merged_ids = fts_ids[:8]
 
