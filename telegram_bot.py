@@ -375,7 +375,7 @@ class TelegramBot:
 
             stats = _db.get_statistics()
             known_types = ", ".join(
-                t for t in (stats.get("by_type") or {}).keys() if t
+                t for t, _ in (stats.get("by_type") or []) if t
             ) or "invoice, insurance, tax, contract, quote"
 
             # ── Step 1: extract structured query intent ───────────────────────
