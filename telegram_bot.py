@@ -401,9 +401,10 @@ class TelegramBot:
             vec_ids = [r[0] for r in vec_results]
 
             from db import _vec_available
+            top_distances = [round(d, 3) for _, d in vec_results[:3]]
             print(f"NL search : fts_query={fts_query!r} fts_hits={len(fts_ids)} "
                   f"vec_hits={len(vec_ids)} vec_available={_vec_available} "
-                  f"max_distance={self._nl_max_distance}")
+                  f"max_distance={self._nl_max_distance} top_distances={top_distances}")
 
             # 3. Reciprocal Rank Fusion — documents appearing in both lists rank highest
             K = 60
