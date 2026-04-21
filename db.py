@@ -20,8 +20,6 @@ _vec_available: bool = False  # set to True once sqlite-vec loads successfully
 
 def _try_load_vec(conn: sqlite3.Connection) -> bool:
     global _vec_available
-    if _vec_available:
-        return True
     try:
         import sqlite_vec
         conn.enable_load_extension(True)
