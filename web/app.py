@@ -244,11 +244,8 @@ def document(doc_id: int) -> str:
         abort(404)
     graph_enabled = bool(os.getenv("TENANT_ID") and os.getenv("CLIENT_ID"))
     local_path = _local_onedrive_path(doc.get("onedrive_path") or "")
-    can_open = bool(
-        _ARCHIVE_ROOT is not None
-        and local_path
-        and (_ARCHIVE_ROOT / local_path).is_file()
-    )
+    local_file_exists = bool(local_path and _ARCHIVE_ROOT and (_ARCHIVE_ROOT / local_path).is_file())
+    can_open = local_file_exists or bool(graph_enabled and doc.get("onedrive_path"))
     # Build back URL from search params passed in the URL, fall back to referrer
     _back_args = {k: request.args.get(k, "") for k in ("q", "type", "year", "sender", "sort", "order", "page")}
     if any(_back_args.values()):
@@ -263,6 +260,7 @@ def document(doc_id: int) -> str:
         "document.html",
         doc=doc,
         can_open=can_open,
+        local_file_exists=local_file_exists,
         graph_enabled=graph_enabled,
         type_labels=TYPE_LABELS,
         type_colors=TYPE_COLORS,

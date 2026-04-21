@@ -256,7 +256,7 @@
 
 <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">&larr; Zurück zur Suche</a>
 {% if can_open %}
-<a href="/pdf/{{ doc.id }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
+<a href="{{ '/pdf/' ~ doc.id if local_file_exists else '/api/documents/' ~ doc.id ~ '/download' }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
 {% endif %}
 {% if graph_enabled %}
 <button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">☁ OneDrive</button>
