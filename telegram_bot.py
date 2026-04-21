@@ -413,9 +413,9 @@ class TelegramBot:
                 scores[doc_id] = scores.get(doc_id, 0) + 1 / (K + rank + 1)
 
             if scores:
-                merged_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:8]
+                merged_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:5]
             else:
-                merged_ids = fts_ids[:8]
+                merged_ids = fts_ids[:5]
 
             rows = [doc for doc_id in merged_ids if (doc := _db.get_document(doc_id))]
 
