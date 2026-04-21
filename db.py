@@ -235,7 +235,7 @@ def update_document(doc_id: int, **fields) -> None:
         "new_filename", "document_type", "destination_folder",
         "onedrive_path", "matched_rule",
         "document_date", "sender", "recipient", "company",
-        "tax_relevant", "seen",
+        "tax_relevant", "seen", "content_hash",
     }
     updates = {k: v for k, v in fields.items() if k in _allowed}
     if not updates:
