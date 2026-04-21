@@ -40,6 +40,7 @@ class TelegramBot:
         graph: Optional["GraphClient"] = None,
         source_folder_id: str = "",
         openai_api_key: str = "",
+        nl_max_distance: float = 0.75,
     ):
         self._token = token
         self._chat_id = str(chat_id)
@@ -47,6 +48,7 @@ class TelegramBot:
         self._graph = graph
         self._source_folder_id = source_folder_id
         self._openai_api_key = openai_api_key
+        self._nl_max_distance = nl_max_distance
         self._offset = 0
 
     # ------------------------------------------------------------------
@@ -395,7 +397,7 @@ class TelegramBot:
 
             # 2. Vector search — catches synonyms, plurals, cross-language matches
             question_vec = get_embedding(question, self._openai_api_key)
-            vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=0.75)
+            vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=self._nl_max_distance)
             vec_ids = [r[0] for r in vec_results]
 
             # 3. Reciprocal Rank Fusion — documents appearing in both lists rank highest
