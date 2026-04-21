@@ -400,7 +400,7 @@ class TelegramBot:
 
             # 2. Vector search — catches synonyms, plurals, cross-language matches
             question_vec = get_embedding(question, self._openai_api_key)
-            vec_results = _db.search_by_embedding(question_vec, k=20)
+            vec_results = _db.search_by_embedding(question_vec, k=20, max_distance=self._nl_max_distance)
             vec_ids = [r[0] for r in vec_results]
 
 
@@ -413,9 +413,9 @@ class TelegramBot:
                 scores[doc_id] = scores.get(doc_id, 0) + 1 / (K + rank + 1)
 
             if scores:
-                merged_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:6]
+                merged_ids = sorted(scores, key=lambda x: scores[x], reverse=True)[:15]
             else:
-                merged_ids = fts_ids[:6]
+                merged_ids = fts_ids[:15]
 
             rows = [doc for doc_id in merged_ids if (doc := _db.get_document(doc_id))]
 
