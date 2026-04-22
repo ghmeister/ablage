@@ -501,7 +501,7 @@ class TelegramBot:
                 # Include the most relevant chunk text so GPT can answer content questions
                 ctx = chunk_context.get(doc["id"])
                 if ctx:
-                    parts.append(f"Inhalt: {ctx[:600]}")
+                    parts.append(f"Inhalt: {ctx[:1200]}")
                 doc_lines.append(" | ".join(parts))
             context = "\n\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
 
