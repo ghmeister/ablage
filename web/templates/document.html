@@ -256,7 +256,15 @@
 
 <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">&larr; Zurück zur Suche</a>
 {% if can_open %}
-<a href="{{ '/pdf/' ~ doc.id if local_file_exists else '/api/documents/' ~ doc.id ~ '/download' }}" target="_blank" class="btn btn-primary btn-sm ms-2">📄 PDF öffnen</a>
+<a href="{{ '/pdf/' ~ doc.id if local_file_exists else '/api/documents/' ~ doc.id ~ '/download' }}"
+   target="_blank" class="btn btn-primary btn-sm ms-2">
+  📄 PDF öffnen
+  <span class="badge {% if local_file_exists %}bg-success{% else %}bg-secondary{% endif %} ms-1"
+        style="font-size:0.65rem"
+        title="{{ '📂 Lokale Datei (schnell)' if local_file_exists else '☁️ Graph API (OneDrive)' }}">
+    {{ '📂 Lokal' if local_file_exists else '☁️ Graph' }}
+  </span>
+</a>
 {% endif %}
 {% if graph_enabled %}
 <button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">☁ OneDrive</button>
