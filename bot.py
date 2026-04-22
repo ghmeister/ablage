@@ -162,15 +162,14 @@ class AblageBot:
 
         # Download + extract in-memory
         content = self.graph.download_file(item_id)
-        pdf_text = self.pdf_extractor.extract_text_from_bytes(content)
-        if not pdf_text:
-            print("Failed to extract text from PDF. Skipping.")
-            return
-
         pdf_info = self.pdf_extractor.get_pdf_info_from_bytes(content)
-        print(f"Extracted {len(pdf_text)} characters from PDF ({pdf_info.get('num_pages', 'unknown')} pages)")
+        pdf_text = self.pdf_extractor.extract_text_from_bytes(content, api_key=os.getenv("OPENAI_API_KEY", ""))
+        if not pdf_text:
+            print("Failed to extract text from PDF — will classify from filename only.")
 
-        content_hash = hashlib.sha256(pdf_text.encode("utf-8", errors="replace")).hexdigest()
+        print(f"Extracted {len(pdf_text or '')} characters from PDF ({pdf_info.get('num_pages', 'unknown')} pages)")
+
+        content_hash = hashlib.sha256((pdf_text or "").encode("utf-8", errors="replace")).hexdigest()
         duplicate_id = _db.find_duplicate_by_hash(content_hash)
         if duplicate_id:
             existing_name = (_db.get_document(duplicate_id) or {}).get("new_filename", "?")
