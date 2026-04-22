@@ -294,7 +294,8 @@ class GraphClient:
         parent_id: str = "root"
 
         for segment in segments:
-            path_url = f"{self.drive_base}/items/{parent_id}/children?$filter=name eq '{segment}'"
+            safe_seg = segment.replace("'", "''")  # OData escaping for single-quoted strings
+            path_url = f"{self.drive_base}/items/{parent_id}/children?$filter=name eq '{safe_seg}'"
             resp = self.request("GET", path_url, allow_statuses={200, 404})
             if resp.status_code == 200:
                 items = resp.json().get("value", [])

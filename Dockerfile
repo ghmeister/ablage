@@ -28,7 +28,12 @@ ENV OUTPUT_BASE_FOLDER="" \
 # /data is the mount point for the persistent token cache volume.
 # The MSAL token cache (.token_cache.json) is written here so it
 # survives container restarts and image upgrades.
-RUN mkdir -p /data
+RUN mkdir -p /data && \
+    groupadd -r appuser && \
+    useradd -r -g appuser -u 1001 appuser && \
+    chown -R appuser:appuser /app /data
 ENV TOKEN_CACHE_PATH=/data/.token_cache.json
+
+USER appuser
 
 CMD ["python", "pdf_renamer_bot.py"]

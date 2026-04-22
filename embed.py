@@ -49,14 +49,29 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
     return [c for c in chunks if c]
 
 
-def get_embedding(text: str, api_key: str) -> list[float]:
-    from openai import OpenAI
+def get_embedding(text: str, api_key: str, max_retries: int = 3) -> list[float]:
+    import time
+    from openai import OpenAI, RateLimitError, APIError
     client = OpenAI(api_key=api_key)
-    response = client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=text[:8000],
-    )
-    return response.data[0].embedding
+    delay = 2.0
+    for attempt in range(max_retries):
+        try:
+            response = client.embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=text[:8000],
+            )
+            vector = response.data[0].embedding
+            assert len(vector) == EMBEDDING_DIMS, (
+                f"Unexpected embedding dimensions: got {len(vector)}, expected {EMBEDDING_DIMS}"
+            )
+            return vector
+        except (RateLimitError, APIError) as exc:
+            if attempt == max_retries - 1:
+                raise
+            print(f"Embedding : retry {attempt + 1}/{max_retries} after error: {exc}")
+            time.sleep(delay)
+            delay *= 2
+    raise RuntimeError("get_embedding: exhausted retries")
 
 
 def serialize(vector: list[float]) -> bytes:

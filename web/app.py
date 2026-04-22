@@ -27,12 +27,25 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 _archive_root_env = os.getenv("ARCHIVE_ROOT", "").strip()
 _ARCHIVE_ROOT = Path(_archive_root_env).resolve() if _archive_root_env else None
 
+
+def _sanitize_filename(filename: str) -> str:
+    filename = filename.strip('"').strip("'")
+    replacements = {' ': '_', '/': '-', '\\': '-', ':': '-',
+                    '*': '', '?': '', '"': '', '<': '', '>': '', '|': '-'}
+    for old, new in replacements.items():
+        filename = filename.replace(old, new)
+    return filename.strip('_-.')
+
 _data_dir = Path(os.getenv("DB_PATH", "/data/documents.db")).parent
 _STATUS_FILE = _data_dir / "bot_status.json"
 _LOG_FILE    = _data_dir / "bot.log"
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
+_secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
+if _secret_key == "dev-secret-change-me":
+    import warnings
+    warnings.warn("SECRET_KEY is set to the insecure default — set the SECRET_KEY env var in production!", stacklevel=1)
+app.secret_key = _secret_key
 
 _UI_USER = os.getenv("UI_USER", "").strip()
 _UI_PASSWORD = os.getenv("UI_PASSWORD", "").strip()
@@ -280,167 +293,24 @@ def nl_search():
     if not openai_api_key:
         return jsonify({"error": "OPENAI_API_KEY not configured"}), 503
 
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"error": "question required"}), 400
 
     try:
-        import json as _json
-        from openai import OpenAI
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from embed import get_embedding
+        import nl_search as _nl
 
-        client = OpenAI(api_key=openai_api_key)
-        stats = db_module.get_statistics()
-        known_types = ", ".join(t for t, _ in (stats.get("by_type") or []) if t) \
-                      or "invoice, insurance, tax, contract, quote"
-        nl_max_distance = float(os.getenv("NL_MAX_DISTANCE", "1.05"))
-
-        # Step 1: extract intent
-        intent_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You extract search intent from a question about a personal document archive. "
-                        f"Known document types: {known_types}. "
-                        "Return JSON with these fields:\n"
-                        '{"is_document_query": true|false, "document_type": "<type or null>", '
-                        '"sender": "<name or null>", "year": "<4-digit year or null>", '
-                        '"keywords": "<1-3 key terms or null>", '
-                        '"sort": "date_desc"|"date_asc"|"relevance", "limit": <1-20>}\n'
-                        "Set is_document_query=false for greetings, small talk, or anything unrelated to documents. "
-                        "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
-                        "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X). "
-                        "Default limit=10 for listing questions. "
-                        "Only return JSON."
-                    ),
-                },
-                {"role": "user", "content": question},
-            ],
-            max_tokens=150,
-            response_format={"type": "json_object"},
-        )
-        try:
-            intent = _json.loads(intent_resp.choices[0].message.content)
-        except Exception:
-            intent = {}
-
-        if not intent.get("is_document_query", True):
-            return jsonify({"answer": "Ich bin dein Assistent für die Dokumentenablage. Stelle mir Fragen zu deinen Dokumenten — z.B. nach Rechnungen, Verträgen oder Absendern.", "documents": []})
-
-        doc_type = intent.get("document_type") or None
-        sender   = intent.get("sender") or None
-        year     = intent.get("year") or None
-        _kw = intent.get("keywords")
-        keywords = " ".join(_kw) if isinstance(_kw, list) else (_kw or None)
-        sort     = intent.get("sort", "relevance")
-        limit    = max(1, min(int(intent.get("limit") or 10), 20))
-        sort_by    = "document_date" if sort in ("date_desc", "date_asc") else "scan_timestamp"
-        sort_order = "asc" if sort == "date_asc" else "desc"
-
-        # Step 2: retrieve candidates
-        rows: list[dict] = []
-        seen_ids: set[int] = set()
-        chunk_context: dict[int, str] = {}
-
-        question_vec = get_embedding(question, openai_api_key)
-
-        # A. Chunk-level semantic search
-        chunk_hits = db_module.search_by_chunk_embedding(
-            question_vec, k=limit, max_distance=nl_max_distance
-        )
-        for doc_id, _chunk_id, _dist, chunk_text_val in chunk_hits:
-            if doc_id not in seen_ids:
-                doc = db_module.get_document(doc_id)
-                if doc:
-                    rows.append(doc)
-                    seen_ids.add(doc_id)
-            chunk_context.setdefault(doc_id, chunk_text_val)
-
-        # B. Structured DB query
-        db_rows, _ = db_module.search_documents(
-            query=keywords, document_type=doc_type, sender=sender, year=year,
-            per_page=limit, sort_by=sort_by, sort_order=sort_order,
-        )
-        for r in db_rows:
-            if r["id"] not in seen_ids:
-                rows.append(r)
-                seen_ids.add(r["id"])
-
-        # C. Doc-level vector fallback
-        if len(rows) < limit:
-            vec_results = db_module.search_by_embedding(
-                question_vec, k=limit, max_distance=nl_max_distance
-            )
-            for doc_id, _ in vec_results:
-                if doc_id not in seen_ids:
-                    doc = db_module.get_document(doc_id)
-                    if doc:
-                        rows.append(doc)
-                        seen_ids.add(doc_id)
-
-        if sort in ("date_desc", "date_asc"):
-            rows.sort(key=lambda d: d.get("document_date") or "", reverse=(sort == "date_desc"))
-        rows = rows[:limit]
-
-        # Fill chunk context for docs found via structured/vector paths (no chunk hit)
-        for doc in rows:
-            if doc["id"] not in chunk_context:
-                chunk_context[doc["id"]] = db_module.get_best_chunk_for_doc(doc["id"], question_vec)
-
-        # Step 3: answer with GPT
-        id_to_doc = {doc["id"]: doc for doc in rows}
-        doc_lines = []
-        for doc in rows:
-            parts = [f"[ID:{doc['id']}] {doc.get('new_filename', '')}"]
-            if doc.get("document_type"):
-                parts.append(f"Typ: {doc['document_type']}")
-            if doc.get("document_date"):
-                parts.append(f"Datum: {doc['document_date']}")
-            if doc.get("company"):
-                parts.append(f"Firma: {doc['company']}")
-            if doc.get("sender"):
-                parts.append(f"Absender: {doc['sender']}")
-            ctx = chunk_context.get(doc["id"])
-            if ctx:
-                parts.append(f"Inhalt: {ctx[:1200]}")
-            doc_lines.append(" | ".join(parts))
-        context = "\n\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
-
-        answer_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Du bist ein persönlicher Assistent für eine Dokumentenablage. "
-                        "Beantworte Fragen auf Deutsch, präzise und freundlich. "
-                        f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
-                        "Der 'Inhalt'-Abschnitt enthält den relevantesten Textausschnitt aus dem Dokument — "
-                        "nutze ihn für inhaltliche Fragen (Preise, Beträge, Daten, Klauseln). "
-                        "Bei Summenfragen (wie viel insgesamt, Gesamtbetrag) addiere die Beträge aus allen Dokumenten und nenne die Summe. "
-                        "Antworte im JSON-Format:\n"
-                        '{"answer": "<Antwort auf Deutsch>", "ids": [<IDs der relevanten Dokumente>]}\n'
-                        "Nur JSON, kein weiterer Text."
-                    ),
-                },
-                {"role": "user", "content": f"Frage: {question}\n\nDokumente:\n{context}"},
-            ],
-            max_tokens=600,
-            response_format={"type": "json_object"},
+        result = _nl.run(
+            question=question,
+            openai_api_key=openai_api_key,
+            db=db_module,
+            nl_max_distance=float(os.getenv("NL_MAX_DISTANCE", "1.05")),
         )
 
-        try:
-            gpt_result = _json.loads(answer_resp.choices[0].message.content)
-            answer_text    = gpt_result.get("answer", "")
-            referenced_ids = [int(i) for i in gpt_result.get("ids", [])]
-        except Exception:
-            answer_text    = answer_resp.choices[0].message.content
-            referenced_ids = [doc["id"] for doc in rows]
-
+        id_to_doc     = {doc["id"]: doc for doc in result["rows"]}
+        chunk_context = result["chunk_context"]
         linked_docs = [
             {
                 "id": id_to_doc[i]["id"],
@@ -452,10 +322,9 @@ def nl_search():
                 "type_label": TYPE_LABELS.get(id_to_doc[i].get("document_type", ""), id_to_doc[i].get("document_type", "")),
                 "type_color": TYPE_COLORS.get(id_to_doc[i].get("document_type", ""), "secondary"),
             }
-            for i in referenced_ids if i in id_to_doc
+            for i in result["referenced_ids"] if i in id_to_doc
         ]
-
-        return jsonify({"answer": answer_text, "documents": linked_docs})
+        return jsonify({"answer": result["answer"], "documents": linked_docs})
 
     except Exception as e:
         app.logger.error(f"NL search error: {e}")
@@ -482,7 +351,7 @@ def view_logs():
 
 @app.route("/api/documents/<int:doc_id>/reclassify", methods=["POST"])
 def reclassify(doc_id: int):
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     new_type = (data.get("document_type") or "").strip()
     if not new_type:
         return jsonify({"error": "document_type required"}), 400
@@ -542,8 +411,8 @@ def reclassify(doc_id: int):
 
 @app.route("/api/documents/<int:doc_id>/rename", methods=["POST"])
 def rename_document(doc_id: int):
-    data = request.get_json(force=True) or {}
-    new_name = (data.get("new_filename") or "").strip()
+    data = request.get_json() or {}
+    new_name = _sanitize_filename((data.get("new_filename") or "").strip())
     if not new_name:
         return jsonify({"error": "new_filename required"}), 400
 
@@ -586,7 +455,7 @@ def rename_document(doc_id: int):
 
 @app.route("/api/documents/<int:doc_id>/metadata", methods=["POST"])
 def update_metadata(doc_id: int):
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     allowed = {"document_date", "sender", "recipient"}
     updates = {k: (data.get(k) or "").strip() or None for k in allowed if k in data}
     if not updates:
@@ -635,7 +504,7 @@ def steuern():
 
 @app.route("/api/documents/<int:doc_id>/tax-relevant", methods=["POST"])
 def set_tax_relevant(doc_id: int):
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     value = bool(data.get("tax_relevant", False))
     if db_module.get_document(doc_id) is None:
         return jsonify({"error": "not found"}), 404
@@ -678,7 +547,7 @@ def delete_document(doc_id: int):
 
 @app.route("/api/documents/bulk-tax-relevant", methods=["POST"])
 def bulk_tax_relevant():
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     ids = [int(i) for i in (data.get("ids") or []) if str(i).isdigit()]
     value = 1 if data.get("tax_relevant", True) else 0
     if not ids:
@@ -698,7 +567,7 @@ def mark_seen(doc_id: int):
 
 @app.route("/api/documents/bulk-seen", methods=["POST"])
 def bulk_seen():
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     ids = [int(i) for i in (data.get("ids") or []) if str(i).isdigit()]
     if not ids:
         return jsonify({"error": "ids required"}), 400
@@ -709,7 +578,7 @@ def bulk_seen():
 
 @app.route("/api/documents/bulk-delete", methods=["POST"])
 def bulk_delete():
-    data = request.get_json(force=True) or {}
+    data = request.get_json() or {}
     ids = [int(i) for i in (data.get("ids") or []) if str(i).isdigit()]
     if not ids:
         return jsonify({"error": "ids required"}), 400

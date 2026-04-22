@@ -210,6 +210,8 @@ class AblageBot:
             dest_parent_id = self.graph.ensure_folder_path(full_path)
             display_path = full_path
 
+        # NOTE: no rollback — if any step below fails (DB write, embedding, HA notify),
+        # the file is already renamed/moved on OneDrive. Manual recovery via backfill_chunks.py.
         result = self.graph.move_and_rename(item_id, new_filename, dest_parent_id)
         final_name = result.get("name", new_filename)
         # Store stem without .pdf — the web template appends the extension
@@ -247,7 +249,12 @@ class AblageBot:
             )
             print(f"Indexed   : {final_name}")
         except Exception as e:
-            print(f"Warning   : DB write failed: {e}")
+            # File has already been moved to OneDrive — it is NOT indexed and will be invisible
+            # in the UI until manually backfilled. This requires immediate attention.
+            import traceback
+            print(f"ERROR     : DB write failed for '{final_name}' — file moved but NOT indexed!")
+            print(f"ERROR     : {e}")
+            traceback.print_exc()
             new_doc_id = None
 
         if new_doc_id:

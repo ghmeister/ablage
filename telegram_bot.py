@@ -368,187 +368,19 @@ class TelegramBot:
             return
         self._send_plain(chat_id, "🤔 Suche in der Ablage …")
         try:
-            import json as _json
-            from openai import OpenAI
-            from embed import get_embedding
-            client = OpenAI(api_key=self._openai_api_key)
-
-            stats = _db.get_statistics()
-            known_types = ", ".join(
-                t for t, _ in (stats.get("by_type") or []) if t
-            ) or "invoice, insurance, tax, contract, quote"
-
-            # ── Step 1: extract structured query intent ───────────────────────
-            intent_resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You extract search intent from a question about a personal document archive. "
-                            f"Known document types in the archive: {known_types}. "
-                            "Return JSON with these fields:\n"
-                            '{"is_document_query": true|false,\n'
-                            ' "document_type": "<exact type from known list or null>",\n'
-                            ' "sender": "<company or person name or null>",\n'
-                            ' "year": "<4-digit year or null>",\n'
-                            ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
-                            ' "sort": "date_desc" | "date_asc" | "relevance",\n'
-                            ' "limit": <1-20, default 10>}\n'
-                            "Set is_document_query=false for greetings, small talk, or anything unrelated to documents. "
-                            "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
-                            "Use sort=date_asc for oldest. "
-                            "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X). "
-                            "Default limit=10 for listing questions. "
-                            "Only return JSON, no other text."
-                        ),
-                    },
-                    {"role": "user", "content": question},
-                ],
-                max_tokens=150,
-                response_format={"type": "json_object"},
+            import nl_search
+            result = nl_search.run(
+                question=question,
+                openai_api_key=self._openai_api_key,
+                db=_db,
+                nl_max_distance=self._nl_max_distance,
             )
-            try:
-                intent = _json.loads(intent_resp.choices[0].message.content)
-            except Exception:
-                intent = {}
-
-            if not intent.get("is_document_query", True):
-                self._send_plain(chat_id, "Ich bin dein Assistent für die Dokumentenablage. Stelle mir Fragen zu deinen Dokumenten — z.B. nach Rechnungen, Verträgen oder Absendern.")
+            self._send_plain(chat_id, result["answer"])
+            if not result["is_document_query"]:
                 return
 
-            doc_type = intent.get("document_type") or None
-            sender   = intent.get("sender") or None
-            year     = intent.get("year") or None
-            _kw = intent.get("keywords")
-            keywords = " ".join(_kw) if isinstance(_kw, list) else (_kw or None)
-            sort     = intent.get("sort", "relevance")
-            limit    = max(1, min(int(intent.get("limit") or 10), 20))
-
-            sort_by    = "document_date" if sort in ("date_desc", "date_asc") else "scan_timestamp"
-            sort_order = "asc" if sort == "date_asc" else "desc"
-
-            print(f"NL intent : type={doc_type!r} sender={sender!r} year={year!r} "
-                  f"keywords={keywords!r} sort={sort} limit={limit}")
-
-            # ── Step 2: retrieve candidates ───────────────────────────────────
-            rows: list[dict] = []
-            seen_ids: set[int] = set()
-            # chunk_context maps doc_id → most relevant chunk text for GPT context
-            chunk_context: dict[int, str] = {}
-
-            question_vec = get_embedding(question, self._openai_api_key)
-
-            # A. Chunk-level semantic search — finds content inside documents
-            chunk_hits = _db.search_by_chunk_embedding(
-                question_vec, k=limit, max_distance=self._nl_max_distance
-            )
-            for doc_id, _chunk_id, _dist, chunk_text in chunk_hits:
-                if doc_id not in seen_ids:
-                    doc = _db.get_document(doc_id)
-                    if doc:
-                        rows.append(doc)
-                        seen_ids.add(doc_id)
-                chunk_context.setdefault(doc_id, chunk_text)
-
-            # B. Structured DB query — reliable for type/sender/year/date filters
-            db_rows, _ = _db.search_documents(
-                query=keywords,
-                document_type=doc_type,
-                sender=sender,
-                year=year,
-                per_page=limit,
-                sort_by=sort_by,
-                sort_order=sort_order,
-            )
-            for r in db_rows:
-                if r["id"] not in seen_ids:
-                    rows.append(r)
-                    seen_ids.add(r["id"])
-
-            # C. Doc-level vector fallback if still sparse
-            if len(rows) < limit:
-                vec_results = _db.search_by_embedding(
-                    question_vec, k=limit, max_distance=self._nl_max_distance
-                )
-                for doc_id, _ in vec_results:
-                    if doc_id not in seen_ids:
-                        doc = _db.get_document(doc_id)
-                        if doc:
-                            rows.append(doc)
-                            seen_ids.add(doc_id)
-
-            # Sort date-desc for recency questions, otherwise keep relevance order
-            if sort in ("date_desc", "date_asc"):
-                rows.sort(
-                    key=lambda d: d.get("document_date") or "",
-                    reverse=(sort == "date_desc"),
-                )
-            rows = rows[:limit]
-
-            # Fill chunk context for docs found via structured/vector paths (no chunk hit)
-            for doc in rows:
-                if doc["id"] not in chunk_context:
-                    chunk_context[doc["id"]] = _db.get_best_chunk_for_doc(doc["id"], question_vec)
-
-            # ── Step 3: answer with GPT ───────────────────────────────────────
-            id_to_doc = {doc["id"]: doc for doc in rows}
-            doc_lines = []
-            for doc in rows:
-                parts = [f"[ID:{doc['id']}] {doc.get('new_filename', '')}"]
-                if doc.get("document_type"):
-                    parts.append(f"Typ: {doc['document_type']}")
-                if doc.get("document_date"):
-                    parts.append(f"Datum: {doc['document_date']}")
-                if doc.get("company"):
-                    parts.append(f"Firma: {doc['company']}")
-                if doc.get("sender"):
-                    parts.append(f"Absender: {doc['sender']}")
-                # Include the most relevant chunk text so GPT can answer content questions
-                ctx = chunk_context.get(doc["id"])
-                if ctx:
-                    parts.append(f"Inhalt: {ctx[:1200]}")
-                doc_lines.append(" | ".join(parts))
-            context = "\n\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
-
-            answer_resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Du bist ein persönlicher Assistent für Meisters Dokumentenablage. "
-                            "Beantworte Fragen auf Deutsch, präzise und freundlich. "
-                            f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
-                            "Die folgenden Dokumente wurden gezielt abgerufen; "
-                            "der 'Inhalt'-Abschnitt enthält den relevantesten Textausschnitt aus dem Dokument. "
-                            "Nutze diesen Inhalt, um inhaltliche Fragen (z.B. Preise, Beträge, Daten, Klauseln) zu beantworten. "
-                            "Bei Summenfragen (wie viel insgesamt, Gesamtbetrag) addiere die Beträge aus allen Dokumenten und nenne die Summe. "
-                            "Antworte im folgenden JSON-Format:\n"
-                            '{"answer": "<deine Antwort auf Deutsch>", "ids": [<IDs der relevanten Dokumente>]}\n'
-                            "Gib nur JSON zurück, kein weiterer Text."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Frage: {question}\n\nDokumente:\n{context}",
-                    },
-                ],
-                max_tokens=600,
-                response_format={"type": "json_object"},
-            )
-
-            try:
-                gpt_result = _json.loads(answer_resp.choices[0].message.content)
-                answer_text    = gpt_result.get("answer", "")
-                referenced_ids = [int(i) for i in gpt_result.get("ids", [])]
-            except Exception:
-                answer_text    = answer_resp.choices[0].message.content
-                referenced_ids = [doc["id"] for doc in rows]
-
-            self._send_plain(chat_id, answer_text)
-
-            linked_docs = [id_to_doc[i] for i in referenced_ids if i in id_to_doc]
+            id_to_doc    = {doc["id"]: doc for doc in result["rows"]}
+            linked_docs  = [id_to_doc[i] for i in result["referenced_ids"] if i in id_to_doc]
             if linked_docs and self._ablage_url:
                 keyboard = [
                     [{"text": (doc.get("new_filename") or "Dokument")[:60],
