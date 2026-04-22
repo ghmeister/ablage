@@ -137,12 +137,26 @@ def init_db() -> None:
         if _vec_available:
             try:
                 conn.execute(
-                    f"CREATE VIRTUAL TABLE IF NOT EXISTS vec_documents "
-                    f"USING vec0(embedding float[1536])"
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS vec_documents "
+                    "USING vec0(embedding float[1536])"
+                )
+                conn.execute(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks "
+                    "USING vec0(embedding float[1536])"
                 )
                 conn.commit()
             except Exception:
                 pass
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS chunks (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                doc_id  INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                chunk_index INTEGER NOT NULL,
+                chunk_text  TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id);
+        """)
+        conn.commit()
         # Migration: add tax_relevant column if it doesn't exist yet
         for migration in [
             "ALTER TABLE documents ADD COLUMN tax_relevant INTEGER NOT NULL DEFAULT 0",
@@ -326,6 +340,82 @@ def get_documents_without_embedding() -> list[dict]:
             ).fetchall()
         except Exception:
             rows = conn.execute("SELECT * FROM documents ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+
+def store_chunks(doc_id: int, chunks: list[str], vectors: list[list[float]]) -> None:
+    """Replace all chunks for a document and store their embeddings."""
+    if not _vec_available:
+        return
+    from embed import serialize
+    with _conn() as conn:
+        # Remove old chunks + embeddings for this doc
+        old_ids = [r[0] for r in conn.execute(
+            "SELECT id FROM chunks WHERE doc_id = ?", (doc_id,)
+        ).fetchall()]
+        for cid in old_ids:
+            try:
+                conn.execute("DELETE FROM vec_chunks WHERE rowid = ?", (cid,))
+            except Exception:
+                pass
+        conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+
+        for idx, (text, vector) in enumerate(zip(chunks, vectors)):
+            cur = conn.execute(
+                "INSERT INTO chunks(doc_id, chunk_index, chunk_text) VALUES (?, ?, ?)",
+                (doc_id, idx, text),
+            )
+            chunk_id = cur.lastrowid
+            conn.execute(
+                "INSERT INTO vec_chunks(rowid, embedding) VALUES (?, vec_f32(?))",
+                (chunk_id, serialize(vector)),
+            )
+
+
+def search_by_chunk_embedding(
+    vector: list[float], k: int = 10, max_distance: float = 1.05
+) -> list[tuple[int, int, float, str]]:
+    """Return (doc_id, chunk_id, distance, chunk_text) for nearest chunk matches."""
+    if not _vec_available:
+        return []
+    from embed import serialize
+    blob = serialize(vector)
+    with _conn() as conn:
+        try:
+            rows = conn.execute(
+                "SELECT c.doc_id, vc.rowid, vc.distance, c.chunk_text "
+                "FROM vec_chunks vc "
+                "JOIN chunks c ON c.id = vc.rowid "
+                "WHERE vc.embedding MATCH vec_f32(?) ORDER BY vc.distance LIMIT ?",
+                (blob, k * 3),  # fetch extra; we deduplicate by doc below
+            ).fetchall()
+            seen_docs: set[int] = set()
+            results = []
+            for doc_id, chunk_id, dist, text in rows:
+                if dist > max_distance:
+                    continue
+                if doc_id not in seen_docs:
+                    seen_docs.add(doc_id)
+                    results.append((doc_id, chunk_id, dist, text))
+                if len(results) >= k:
+                    break
+            return results
+        except Exception:
+            return []
+
+
+def get_docs_without_chunks() -> list[dict]:
+    """Return documents that have no chunks stored yet but have extracted_text."""
+    with _conn() as conn:
+        try:
+            rows = conn.execute(
+                "SELECT * FROM documents "
+                "WHERE extracted_text IS NOT NULL AND extracted_text != '' "
+                "AND id NOT IN (SELECT DISTINCT doc_id FROM chunks) "
+                "ORDER BY id"
+            ).fetchall()
+        except Exception:
+            rows = []
         return [dict(r) for r in rows]
 
 

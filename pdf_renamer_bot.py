@@ -252,7 +252,8 @@ class AblageBot:
 
         if new_doc_id:
             try:
-                from embed import build_document_text, get_embedding
+                from embed import build_document_text, chunk_text, get_embedding
+                api_key = os.getenv("OPENAI_API_KEY", "")
                 embed_doc = {
                     "new_filename": final_stem,
                     "document_type": metadata.get("document_type"),
@@ -261,10 +262,18 @@ class AblageBot:
                     "recipient": metadata.get("recipient"),
                     "keywords": ", ".join(metadata.get("keywords") or []),
                 }
-                vector = get_embedding(build_document_text(embed_doc),
-                                       os.getenv("OPENAI_API_KEY", ""))
+                # Doc-level embedding (for find-by-attribute queries)
+                vector = get_embedding(build_document_text(embed_doc), api_key)
                 _db.store_embedding(new_doc_id, vector)
-                print(f"Embedding : stored")
+
+                # Chunk-level embeddings (for content queries)
+                if pdf_text:
+                    chunks = chunk_text(pdf_text)
+                    chunk_vectors = [get_embedding(c, api_key) for c in chunks]
+                    _db.store_chunks(new_doc_id, chunks, chunk_vectors)
+                    print(f"Chunks    : {len(chunks)} stored")
+                else:
+                    print(f"Embedding : stored (no text for chunking)")
             except Exception as e:
                 print(f"Warning   : Embedding failed: {e}")
 

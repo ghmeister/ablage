@@ -12,8 +12,12 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIMS = 1536
 
 
+CHUNK_SIZE    = 1800  # characters per chunk (~450 tokens)
+CHUNK_OVERLAP = 200   # overlap between consecutive chunks
+
+
 def build_document_text(doc: dict) -> str:
-    """Concatenate the searchable fields of a document into one string for embedding."""
+    """Metadata string for doc-level embedding (used for find-by-attribute queries)."""
     parts = [
         doc.get("new_filename") or "",
         doc.get("document_type") or "",
@@ -23,6 +27,26 @@ def build_document_text(doc: dict) -> str:
         doc.get("keywords") or "",
     ]
     return " ".join(p for p in parts if p).strip()
+
+
+def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    """Split text into overlapping chunks, breaking at whitespace boundaries."""
+    if not text:
+        return []
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        # extend to next whitespace so we don't cut mid-word
+        if end < len(text):
+            ws = text.find(" ", end)
+            if ws != -1 and ws - end < 100:
+                end = ws
+        chunks.append(text[start:end].strip())
+        if end >= len(text):
+            break
+        start = end - overlap
+    return [c for c in chunks if c]
 
 
 def get_embedding(text: str, api_key: str) -> list[float]:

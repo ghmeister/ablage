@@ -426,8 +426,24 @@ class TelegramBot:
             # ── Step 2: retrieve candidates ───────────────────────────────────
             rows: list[dict] = []
             seen_ids: set[int] = set()
+            # chunk_context maps doc_id → most relevant chunk text for GPT context
+            chunk_context: dict[int, str] = {}
 
-            # A. Structured DB query (handles type/sender/year/date-sort perfectly)
+            question_vec = get_embedding(question, self._openai_api_key)
+
+            # A. Chunk-level semantic search — finds content inside documents
+            chunk_hits = _db.search_by_chunk_embedding(
+                question_vec, k=limit, max_distance=self._nl_max_distance
+            )
+            for doc_id, _chunk_id, _dist, chunk_text in chunk_hits:
+                if doc_id not in seen_ids:
+                    doc = _db.get_document(doc_id)
+                    if doc:
+                        rows.append(doc)
+                        seen_ids.add(doc_id)
+                chunk_context.setdefault(doc_id, chunk_text)
+
+            # B. Structured DB query — reliable for type/sender/year/date filters
             db_rows, _ = _db.search_documents(
                 query=keywords,
                 document_type=doc_type,
@@ -442,26 +458,25 @@ class TelegramBot:
                     rows.append(r)
                     seen_ids.add(r["id"])
 
-            # B. Semantic vector search (helps when no structured filters match)
-            if keywords or not rows:
-                search_text = keywords or question
-                question_vec = get_embedding(search_text, self._openai_api_key)
+            # C. Doc-level vector fallback if still sparse
+            if len(rows) < limit:
                 vec_results = _db.search_by_embedding(
-                    question_vec, k=20, max_distance=self._nl_max_distance
+                    question_vec, k=limit, max_distance=self._nl_max_distance
                 )
-                vec_ids = [r[0] for r in vec_results]
-                # Fetch and append vector hits not already in rows
-                extra_needed = max(0, limit - len(rows))
-                added = 0
-                for doc_id in vec_ids:
-                    if added >= extra_needed:
-                        break
+                for doc_id, _ in vec_results:
                     if doc_id not in seen_ids:
                         doc = _db.get_document(doc_id)
                         if doc:
                             rows.append(doc)
                             seen_ids.add(doc_id)
-                            added += 1
+
+            # Sort date-desc for recency questions, otherwise keep relevance order
+            if sort in ("date_desc", "date_asc"):
+                rows.sort(
+                    key=lambda d: d.get("document_date") or "",
+                    reverse=(sort == "date_desc"),
+                )
+            rows = rows[:limit]
 
             # ── Step 3: answer with GPT ───────────────────────────────────────
             id_to_doc = {doc["id"]: doc for doc in rows}
@@ -476,8 +491,12 @@ class TelegramBot:
                     parts.append(f"Firma: {doc['company']}")
                 if doc.get("sender"):
                     parts.append(f"Absender: {doc['sender']}")
+                # Include the most relevant chunk text so GPT can answer content questions
+                ctx = chunk_context.get(doc["id"])
+                if ctx:
+                    parts.append(f"Inhalt: {ctx[:600]}")
                 doc_lines.append(" | ".join(parts))
-            context = "\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
+            context = "\n\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
 
             answer_resp = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -488,8 +507,9 @@ class TelegramBot:
                             "Du bist ein persönlicher Assistent für Meisters Dokumentenablage. "
                             "Beantworte Fragen auf Deutsch, präzise und freundlich. "
                             f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
-                            "Die folgenden Dokumente wurden gezielt aus der Datenbank abgerufen. "
-                            "Beantworte die Frage anhand dieser Dokumente. "
+                            "Die folgenden Dokumente wurden gezielt abgerufen; "
+                            "der 'Inhalt'-Abschnitt enthält den relevantesten Textausschnitt aus dem Dokument. "
+                            "Nutze diesen Inhalt, um inhaltliche Fragen (z.B. Preise, Beträge, Daten, Klauseln) zu beantworten. "
                             "Antworte im folgenden JSON-Format:\n"
                             '{"answer": "<deine Antwort auf Deutsch>", "ids": [<IDs der relevanten Dokumente>]}\n'
                             "Gib nur JSON zurück, kein weiterer Text."
@@ -500,7 +520,7 @@ class TelegramBot:
                         "content": f"Frage: {question}\n\nDokumente:\n{context}",
                     },
                 ],
-                max_tokens=500,
+                max_tokens=600,
                 response_format={"type": "json_object"},
             )
 
