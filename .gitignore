@@ -54,3 +54,4 @@ Scripts/
 
 # MSAL token cache (contains refresh tokens - never commit)
 .token_cache.json
+docker-compose.production.yml
