@@ -404,6 +404,35 @@ def search_by_chunk_embedding(
             return []
 
 
+def get_best_chunk_for_doc(doc_id: int, query_vector: list[float]) -> str:
+    """Return the chunk text most similar to query_vector for a given doc, or '' if none."""
+    if not _vec_available:
+        return ""
+    from embed import serialize
+    blob = serialize(query_vector)
+    with _conn() as conn:
+        try:
+            row = conn.execute(
+                "SELECT c.chunk_text FROM vec_chunks vc "
+                "JOIN chunks c ON c.id = vc.rowid "
+                "WHERE c.doc_id = ? "
+                "ORDER BY vc.embedding <-> vec_f32(?) LIMIT 1",
+                (doc_id, blob),
+            ).fetchone()
+            return row[0] if row else ""
+        except Exception:
+            # Fallback: just return the first chunk for this doc
+            try:
+                row = conn.execute(
+                    "SELECT chunk_text FROM chunks WHERE doc_id = ? "
+                    "ORDER BY chunk_index LIMIT 1",
+                    (doc_id,),
+                ).fetchone()
+                return row[0] if row else ""
+            except Exception:
+                return ""
+
+
 def get_docs_without_chunks() -> list[dict]:
     """Return documents that have no chunks stored yet but have extracted_text."""
     with _conn() as conn:

@@ -374,6 +374,11 @@ def nl_search():
             rows.sort(key=lambda d: d.get("document_date") or "", reverse=(sort == "date_desc"))
         rows = rows[:limit]
 
+        # Fill chunk context for docs found via structured/vector paths (no chunk hit)
+        for doc in rows:
+            if doc["id"] not in chunk_context:
+                chunk_context[doc["id"]] = db_module.get_best_chunk_for_doc(doc["id"], question_vec)
+
         # Step 3: answer with GPT
         id_to_doc = {doc["id"]: doc for doc in rows}
         doc_lines = []
