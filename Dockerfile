@@ -32,8 +32,8 @@ ENV OUTPUT_BASE_FOLDER="" \
 # survives container restarts and image upgrades.
 RUN mkdir -p /data && \
     groupadd -r appuser && \
-    useradd -r -g appuser -u 1001 appuser && \
-    chown -R appuser:appuser /app
+    useradd -r -g appuser -u 1001 -d /home/appuser -m appuser && \
+    chown -R appuser:appuser /app /home/appuser
 ENV TOKEN_CACHE_PATH=/data/.token_cache.json
 
 COPY entrypoint.sh /entrypoint.sh
