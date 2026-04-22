@@ -50,7 +50,7 @@ jobs:
               id: meta
               uses: docker/metadata-action@v5
               with:
-                  images: ghcr.io/minenmaster/ablage
+                  images: ghcr.io/ghmeister/ablage
                   tags: |
                       type=raw,value=${{ needs.versioning.outputs.version }}
                       type=raw,value=latest
