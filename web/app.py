@@ -662,8 +662,11 @@ def open_pdf(doc_id: int):
         pdf_path.relative_to(_ARCHIVE_ROOT)
     except ValueError:
         abort(403)
-    if not pdf_path.is_file():
-        abort(404)
+    try:
+        if not pdf_path.is_file():
+            abort(404)
+    except PermissionError:
+        abort(403, "No read access to archive — run: chmod -R o+rX <archive_path> on the host")
     return send_file(str(pdf_path), mimetype="application/pdf")
 
 
