@@ -1,7 +1,7 @@
 name: ablage
 
 services:
-    ablage:
+    bot:
         image: ghcr.io/ghmeister/ablage:latest
         restart: unless-stopped
         environment:
@@ -43,7 +43,7 @@ services:
             # Optional: mount custom classification rules
             # - ./classification_rules.yaml:/app/classification_rules.yaml:ro
 
-    ablage-web:
+    web:
         image: ghcr.io/ghmeister/ablage:latest
         restart: unless-stopped
         command: ["python", "web/app.py"]
