@@ -1,6 +1,8 @@
 #!/bin/sh
-# Fix /data ownership at runtime — the host volume mount replaces the image
-# layer, so the chown in the Dockerfile doesn't survive. This runs as root,
-# fixes permissions, then drops to appuser via gosu.
-chown -R appuser:appuser /data
-exec gosu appuser "$@"
+# If running as root: fix /data ownership then drop to appuser via gosu.
+# If already running as a non-root user (e.g. user: "1000:1000" in compose): just exec directly.
+if [ "$(id -u)" = "0" ]; then
+    chown -R appuser:appuser /data 2>/dev/null || true
+    exec gosu appuser "$@"
+fi
+exec "$@"
