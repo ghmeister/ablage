@@ -248,8 +248,12 @@ def document(doc_id: int) -> str:
     local_file_exists = bool(local_path and _ARCHIVE_ROOT and (_ARCHIVE_ROOT / local_path).is_file())
     can_open = local_file_exists or bool(graph_enabled and doc.get("onedrive_path"))
     # Build back URL from search params passed in the URL, fall back to referrer
+    # Explicit back param takes priority (e.g. ?back=/duplicates from duplicate alert link)
+    explicit_back = request.args.get("back", "").strip()
     _back_args = {k: request.args.get(k, "") for k in ("q", "type", "year", "sender", "sort", "order", "page")}
-    if any(_back_args.values()):
+    if explicit_back:
+        back_url = explicit_back
+    elif any(_back_args.values()):
         back_url = "/?" + "&".join(f"{k}={quote_plus(v)}" for k, v in _back_args.items() if v)
     else:
         back_url = request.referrer or "/"
@@ -596,6 +600,15 @@ def update_metadata(doc_id: int):
 @app.route("/duplicates")
 def duplicates():
     groups = db_module.get_duplicate_groups()
+    # Normalize onedrive_path for display: strip OUTPUT_BASE_FOLDER prefix so
+    # old docs (relative path) and new docs (full path) show consistently
+    archive_root = os.getenv("OUTPUT_BASE_FOLDER", "").strip("/\\")
+    for group in groups:
+        for doc in group:
+            path = (doc.get("onedrive_path") or "").lstrip("/")
+            if archive_root and path.startswith(archive_root + "/"):
+                path = path[len(archive_root) + 1:]
+            doc["_display_path"] = path
     return render_template("duplicates.html", groups=groups, type_labels=TYPE_LABELS)
 
 

@@ -45,15 +45,15 @@
                    {% if loop.first %}checked{% endif %}>
           </td>
           <td class="small">
-            <a href="/document/{{ doc.id }}" target="_blank" class="text-decoration-none">
+            <a href="/document/{{ doc.id }}?back=/duplicates" class="text-decoration-none">
               {{ doc.new_filename or '–' }}
             </a>
           </td>
           <td class="small text-muted">{{ type_labels.get(doc.document_type or '', doc.document_type or '–') }}</td>
           <td class="small text-muted text-nowrap">{{ doc.document_date or '–' }}</td>
-          <td class="small text-muted text-break" style="max-width:260px;font-size:0.72rem">{{ doc.onedrive_path or '–' }}</td>
+          <td class="small text-muted text-break" style="max-width:260px;font-size:0.72rem">{{ doc._display_path or '–' }}</td>
           <td class="text-end pe-2">
-            <a href="/document/{{ doc.id }}" target="_blank"
+            <a href="/document/{{ doc.id }}?back=/duplicates"
                class="btn btn-outline-secondary btn-sm py-0 px-1" style="font-size:0.7rem">↗</a>
           </td>
         </tr>
