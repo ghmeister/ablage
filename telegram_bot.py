@@ -413,7 +413,8 @@ class TelegramBot:
             doc_type = intent.get("document_type") or None
             sender   = intent.get("sender") or None
             year     = intent.get("year") or None
-            keywords = intent.get("keywords") or None
+            _kw = intent.get("keywords")
+            keywords = " ".join(_kw) if isinstance(_kw, list) else (_kw or None)
             sort     = intent.get("sort", "relevance")
             limit    = max(1, min(int(intent.get("limit") or 10), 20))
 

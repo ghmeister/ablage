@@ -269,6 +269,181 @@ def document(doc_id: int) -> str:
     )
 
 
+@app.route("/api/nl-search", methods=["POST"])
+def nl_search():
+    openai_api_key = os.getenv("OPENAI_API_KEY", "")
+    if not openai_api_key:
+        return jsonify({"error": "OPENAI_API_KEY not configured"}), 503
+
+    data = request.get_json(force=True) or {}
+    question = (data.get("question") or "").strip()
+    if not question:
+        return jsonify({"error": "question required"}), 400
+
+    try:
+        import json as _json
+        from openai import OpenAI
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from embed import get_embedding
+
+        client = OpenAI(api_key=openai_api_key)
+        stats = db_module.get_statistics()
+        known_types = ", ".join(t for t, _ in (stats.get("by_type") or []) if t) \
+                      or "invoice, insurance, tax, contract, quote"
+        nl_max_distance = float(os.getenv("NL_MAX_DISTANCE", "1.05"))
+
+        # Step 1: extract intent
+        intent_resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You extract search intent from a question about a personal document archive. "
+                        f"Known document types: {known_types}. "
+                        "Return JSON with these fields (null if not applicable):\n"
+                        '{"document_type": "<type or null>", "sender": "<name or null>", '
+                        '"year": "<4-digit year or null>", "keywords": "<1-3 key terms or null>", '
+                        '"sort": "date_desc"|"date_asc"|"relevance", "limit": <1-20>}\n'
+                        "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
+                        "Only return JSON."
+                    ),
+                },
+                {"role": "user", "content": question},
+            ],
+            max_tokens=150,
+            response_format={"type": "json_object"},
+        )
+        try:
+            intent = _json.loads(intent_resp.choices[0].message.content)
+        except Exception:
+            intent = {}
+
+        doc_type = intent.get("document_type") or None
+        sender   = intent.get("sender") or None
+        year     = intent.get("year") or None
+        _kw = intent.get("keywords")
+        keywords = " ".join(_kw) if isinstance(_kw, list) else (_kw or None)
+        sort     = intent.get("sort", "relevance")
+        limit    = max(1, min(int(intent.get("limit") or 10), 20))
+        sort_by    = "document_date" if sort in ("date_desc", "date_asc") else "scan_timestamp"
+        sort_order = "asc" if sort == "date_asc" else "desc"
+
+        # Step 2: retrieve candidates
+        rows: list[dict] = []
+        seen_ids: set[int] = set()
+        chunk_context: dict[int, str] = {}
+
+        question_vec = get_embedding(question, openai_api_key)
+
+        # A. Chunk-level semantic search
+        chunk_hits = db_module.search_by_chunk_embedding(
+            question_vec, k=limit, max_distance=nl_max_distance
+        )
+        for doc_id, _chunk_id, _dist, chunk_text_val in chunk_hits:
+            if doc_id not in seen_ids:
+                doc = db_module.get_document(doc_id)
+                if doc:
+                    rows.append(doc)
+                    seen_ids.add(doc_id)
+            chunk_context.setdefault(doc_id, chunk_text_val)
+
+        # B. Structured DB query
+        db_rows, _ = db_module.search_documents(
+            query=keywords, document_type=doc_type, sender=sender, year=year,
+            per_page=limit, sort_by=sort_by, sort_order=sort_order,
+        )
+        for r in db_rows:
+            if r["id"] not in seen_ids:
+                rows.append(r)
+                seen_ids.add(r["id"])
+
+        # C. Doc-level vector fallback
+        if len(rows) < limit:
+            vec_results = db_module.search_by_embedding(
+                question_vec, k=limit, max_distance=nl_max_distance
+            )
+            for doc_id, _ in vec_results:
+                if doc_id not in seen_ids:
+                    doc = db_module.get_document(doc_id)
+                    if doc:
+                        rows.append(doc)
+                        seen_ids.add(doc_id)
+
+        if sort in ("date_desc", "date_asc"):
+            rows.sort(key=lambda d: d.get("document_date") or "", reverse=(sort == "date_desc"))
+        rows = rows[:limit]
+
+        # Step 3: answer with GPT
+        id_to_doc = {doc["id"]: doc for doc in rows}
+        doc_lines = []
+        for doc in rows:
+            parts = [f"[ID:{doc['id']}] {doc.get('new_filename', '')}"]
+            if doc.get("document_type"):
+                parts.append(f"Typ: {doc['document_type']}")
+            if doc.get("document_date"):
+                parts.append(f"Datum: {doc['document_date']}")
+            if doc.get("company"):
+                parts.append(f"Firma: {doc['company']}")
+            if doc.get("sender"):
+                parts.append(f"Absender: {doc['sender']}")
+            ctx = chunk_context.get(doc["id"])
+            if ctx:
+                parts.append(f"Inhalt: {ctx[:600]}")
+            doc_lines.append(" | ".join(parts))
+        context = "\n\n".join(doc_lines) if doc_lines else "Keine passenden Dokumente gefunden."
+
+        answer_resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Du bist ein persönlicher Assistent für eine Dokumentenablage. "
+                        "Beantworte Fragen auf Deutsch, präzise und freundlich. "
+                        f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
+                        "Der 'Inhalt'-Abschnitt enthält den relevantesten Textausschnitt aus dem Dokument — "
+                        "nutze ihn für inhaltliche Fragen (Preise, Beträge, Daten, Klauseln). "
+                        "Antworte im JSON-Format:\n"
+                        '{"answer": "<Antwort auf Deutsch>", "ids": [<IDs der relevanten Dokumente>]}\n'
+                        "Nur JSON, kein weiterer Text."
+                    ),
+                },
+                {"role": "user", "content": f"Frage: {question}\n\nDokumente:\n{context}"},
+            ],
+            max_tokens=600,
+            response_format={"type": "json_object"},
+        )
+
+        try:
+            gpt_result = _json.loads(answer_resp.choices[0].message.content)
+            answer_text    = gpt_result.get("answer", "")
+            referenced_ids = [int(i) for i in gpt_result.get("ids", [])]
+        except Exception:
+            answer_text    = answer_resp.choices[0].message.content
+            referenced_ids = [doc["id"] for doc in rows]
+
+        linked_docs = [
+            {
+                "id": id_to_doc[i]["id"],
+                "new_filename": id_to_doc[i].get("new_filename", ""),
+                "document_type": id_to_doc[i].get("document_type", ""),
+                "document_date": id_to_doc[i].get("document_date", ""),
+                "sender": id_to_doc[i].get("sender") or id_to_doc[i].get("company") or "",
+                "chunk_text": chunk_context.get(i, ""),
+                "type_label": TYPE_LABELS.get(id_to_doc[i].get("document_type", ""), id_to_doc[i].get("document_type", "")),
+                "type_color": TYPE_COLORS.get(id_to_doc[i].get("document_type", ""), "secondary"),
+            }
+            for i in referenced_ids if i in id_to_doc
+        ]
+
+        return jsonify({"answer": answer_text, "documents": linked_docs})
+
+    except Exception as e:
+        app.logger.error(f"NL search error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/bot-status")
 def bot_status():
     try:
