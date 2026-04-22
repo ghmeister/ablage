@@ -116,7 +116,7 @@ MAX_FILENAME_LENGTH={max_length}
 Your PDF Renamer Bot is now configured and ready to use!
 
 To start the bot:
-    python pdf_renamer_bot.py
+    python bot.py
 
 The bot will:
 1. Monitor your folder for new PDFs

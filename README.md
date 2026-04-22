@@ -38,7 +38,7 @@ OneDrive Drop Zone
 
 | Component | File | Purpose |
 |---|---|---|
-| Bot | `pdf_renamer_bot.py` | Orchestration, polling loop, notifications |
+| Bot | `bot.py` | Orchestration, polling loop, notifications |
 | Graph client | `graph_client.py` | OneDrive API: download, move, rename, upload, delete |
 | AI renamer | `ai_renamer.py` | GPT-4o document analysis → structured metadata |
 | PDF extractor | `pdf_extractor.py` | Text extraction with PyPDF2 |
@@ -96,7 +96,7 @@ docker compose logs -f ablage
 ```yaml
 services:
   ablage:
-    image: ghcr.io/minenmaster/pdf-renamer:latest
+    image: ghcr.io/ghmeister/ablage:latest
     restart: unless-stopped
     environment:
       - OPENAI_API_KEY=sk-...
@@ -119,7 +119,7 @@ services:
       - doc_data:/data
 
   ablage-web:
-    image: ghcr.io/minenmaster/pdf-renamer:latest
+    image: ghcr.io/ghmeister/ablage:latest
     restart: unless-stopped
     command: ["python", "web/app.py"]
     environment:
@@ -266,7 +266,7 @@ pip install -r requirements.txt
 
 # Run bot locally
 cp config.example.env .env
-python pdf_renamer_bot.py
+python bot.py
 
 # Run web UI locally
 DB_PATH=./documents.db UI_USER=admin UI_PASSWORD=secret SECRET_KEY=dev python web/app.py

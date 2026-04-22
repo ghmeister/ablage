@@ -79,7 +79,7 @@ If you were using the Claude-based version, do the following:
 4. **Run the Bot**
 
     ```bash
-    python pdf_renamer_bot.py
+    python bot.py
     ```
 
 ## Files Modified
@@ -90,7 +90,7 @@ The following files were updated during this migration:
 - `requirements.txt` - Dependencies
 - `config.example.env` - Configuration template
 - `setup.py` - Setup wizard
-- `pdf_renamer_bot.py` - Main bot
+- `bot.py` - Main bot
 - `test_basic.py` - Tests
 - `README.md` - Documentation
 - `ARCHITECTURE.md` - Architecture docs

@@ -62,7 +62,7 @@ def main():
 """)
     
     # Create test directory
-    test_dir = Path("/tmp/pdf_renamer_demo")
+    test_dir = Path("/tmp/ablage_demo")
     test_dir.mkdir(exist_ok=True)
     print(f"Demo directory: {test_dir}\n")
     
@@ -161,7 +161,7 @@ Payment Terms: Net 30"""
     print(f"\n📁 Sample files are located in: {test_dir}")
     print("\nTo test the bot with these files:")
     print(f"1. Set ONEDRIVE_FOLDER_PATH={test_dir} in your .env")
-    print("2. Run: python pdf_renamer_bot.py")
+    print("2. Run: python bot.py")
     print("3. Choose 'y' to process existing files")
     
     print("\n💡 Tip: You can copy these PDFs to your actual OneDrive folder")

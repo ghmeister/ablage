@@ -5,7 +5,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    PDF Renamer Bot                          │
-│                  (pdf_renamer_bot.py)                       │
+│                  (bot.py)                       │
 └──────────────┬─────────────┬──────────────┬─────────────────┘
                │             │              │
        ┌───────▼───────┐ ┌──▼────────┐ ┌───▼──────────────┐
@@ -52,7 +52,7 @@
 - Enforces length limits (default: 100 chars)
 - Handles duplicate filenames with numeric suffixes
 
-### Main Bot (pdf_renamer_bot.py)
+### Main Bot (bot.py)
 
 - Orchestrates all components
 - Manages configuration via .env file

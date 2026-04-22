@@ -41,4 +41,4 @@ RUN chmod +x /entrypoint.sh
 
 # Entrypoint runs as root, chowns /data, then drops to appuser via gosu
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "pdf_renamer_bot.py"]
+CMD ["python", "bot.py"]

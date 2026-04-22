@@ -32,10 +32,10 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from pdf_renamer_bot import PDFRenamerBot
-    print("✓ pdf_renamer_bot imported successfully")
+    from bot import PDFRenamerBot
+    print("✓ bot imported successfully")
 except Exception as e:
-    print(f"⚠️  pdf_renamer_bot import check: {e}")
+    print(f"⚠️  bot import check: {e}")
     print("   (This is expected if environment is not configured)")
 
 # Test PDFExtractor initialization
@@ -114,4 +114,4 @@ print("="*60)
 print("\nTo run the full bot, you need to:")
 print("1. Install dependencies: pip install -r requirements.txt")
 print("2. Create .env file with your configuration")
-print("3. Run: python pdf_renamer_bot.py")
+print("3. Run: python bot.py")
