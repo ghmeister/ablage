@@ -83,13 +83,14 @@ def _load_type_ui() -> tuple[dict[str, str], dict[str, str]]:
 TYPE_LABELS, TYPE_COLORS = _load_type_ui()
 
 _APP_VERSION = os.getenv("APP_VERSION", "dev")
+_GIT_COMMIT  = os.getenv("GIT_COMMIT", "")[:7]
 
 _PER_PAGE = 25
 
 
 @app.context_processor
 def inject_globals():
-    return {"app_version": _APP_VERSION}
+    return {"app_version": _APP_VERSION, "git_commit": _GIT_COMMIT}
 
 # ---------------------------------------------------------------------------
 # One-time DB init at startup

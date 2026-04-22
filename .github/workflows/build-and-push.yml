@@ -62,4 +62,6 @@ jobs:
                   push: true
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: ${{ steps.meta.outputs.labels }}
-                  build-args: APP_VERSION=${{ needs.versioning.outputs.version }}
+                  build-args: |
+                      APP_VERSION=${{ needs.versioning.outputs.version }}
+                      GIT_COMMIT=${{ github.sha }}
