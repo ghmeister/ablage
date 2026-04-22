@@ -307,6 +307,8 @@ def nl_search():
                         '"year": "<4-digit year or null>", "keywords": "<1-3 key terms or null>", '
                         '"sort": "date_desc"|"date_asc"|"relevance", "limit": <1-20>}\n'
                         "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
+                        "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X). "
+                        "Default limit=10 for listing questions. "
                         "Only return JSON."
                     ),
                 },
@@ -410,6 +412,7 @@ def nl_search():
                         f"Die Ablage enthält insgesamt {stats['total']} Dokumente. "
                         "Der 'Inhalt'-Abschnitt enthält den relevantesten Textausschnitt aus dem Dokument — "
                         "nutze ihn für inhaltliche Fragen (Preise, Beträge, Daten, Klauseln). "
+                        "Bei Summenfragen (wie viel insgesamt, Gesamtbetrag) addiere die Beträge aus allen Dokumenten und nenne die Summe. "
                         "Antworte im JSON-Format:\n"
                         '{"answer": "<Antwort auf Deutsch>", "ids": [<IDs der relevanten Dokumente>]}\n'
                         "Nur JSON, kein weiterer Text."

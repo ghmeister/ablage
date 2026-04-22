@@ -394,9 +394,10 @@ class TelegramBot:
                             ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
                             ' "sort": "date_desc" | "date_asc" | "relevance",\n'
                             ' "limit": <1-20, default 10>}\n'
-                            "Use sort=date_desc for questions about the latest/most recent document. "
+                            "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
                             "Use sort=date_asc for oldest. "
-                            "Use limit=1 for 'what is the last/latest X'. "
+                            "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all invoices from X). "
+                            "Default limit=10 for listing questions. "
                             "Only return JSON, no other text."
                         ),
                     },
@@ -516,6 +517,7 @@ class TelegramBot:
                             "Die folgenden Dokumente wurden gezielt abgerufen; "
                             "der 'Inhalt'-Abschnitt enthält den relevantesten Textausschnitt aus dem Dokument. "
                             "Nutze diesen Inhalt, um inhaltliche Fragen (z.B. Preise, Beträge, Daten, Klauseln) zu beantworten. "
+                            "Bei Summenfragen (wie viel insgesamt, Gesamtbetrag) addiere die Beträge aus allen Dokumenten und nenne die Summe. "
                             "Antworte im folgenden JSON-Format:\n"
                             '{"answer": "<deine Antwort auf Deutsch>", "ids": [<IDs der relevanten Dokumente>]}\n'
                             "Gib nur JSON zurück, kein weiterer Text."
