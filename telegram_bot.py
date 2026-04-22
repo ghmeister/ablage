@@ -387,16 +387,18 @@ class TelegramBot:
                         "content": (
                             "You extract search intent from a question about a personal document archive. "
                             f"Known document types in the archive: {known_types}. "
-                            "Return JSON with these fields (all optional, use null if not applicable):\n"
-                            '{"document_type": "<exact type from known list or null>",\n'
+                            "Return JSON with these fields:\n"
+                            '{"is_document_query": true|false,\n'
+                            ' "document_type": "<exact type from known list or null>",\n'
                             ' "sender": "<company or person name or null>",\n'
                             ' "year": "<4-digit year or null>",\n'
                             ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
                             ' "sort": "date_desc" | "date_asc" | "relevance",\n'
                             ' "limit": <1-20, default 10>}\n'
+                            "Set is_document_query=false for greetings, small talk, or anything unrelated to documents. "
                             "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
                             "Use sort=date_asc for oldest. "
-                            "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all invoices from X). "
+                            "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X). "
                             "Default limit=10 for listing questions. "
                             "Only return JSON, no other text."
                         ),
@@ -410,6 +412,10 @@ class TelegramBot:
                 intent = _json.loads(intent_resp.choices[0].message.content)
             except Exception:
                 intent = {}
+
+            if not intent.get("is_document_query", True):
+                self._send_plain(chat_id, "Ich bin dein Assistent für die Dokumentenablage. Stelle mir Fragen zu deinen Dokumenten — z.B. nach Rechnungen, Verträgen oder Absendern.")
+                return
 
             doc_type = intent.get("document_type") or None
             sender   = intent.get("sender") or None

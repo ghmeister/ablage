@@ -302,10 +302,12 @@ def nl_search():
                     "content": (
                         "You extract search intent from a question about a personal document archive. "
                         f"Known document types: {known_types}. "
-                        "Return JSON with these fields (null if not applicable):\n"
-                        '{"document_type": "<type or null>", "sender": "<name or null>", '
-                        '"year": "<4-digit year or null>", "keywords": "<1-3 key terms or null>", '
+                        "Return JSON with these fields:\n"
+                        '{"is_document_query": true|false, "document_type": "<type or null>", '
+                        '"sender": "<name or null>", "year": "<4-digit year or null>", '
+                        '"keywords": "<1-3 key terms or null>", '
                         '"sort": "date_desc"|"date_asc"|"relevance", "limit": <1-20>}\n'
+                        "Set is_document_query=false for greetings, small talk, or anything unrelated to documents. "
                         "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
                         "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X). "
                         "Default limit=10 for listing questions. "
@@ -321,6 +323,9 @@ def nl_search():
             intent = _json.loads(intent_resp.choices[0].message.content)
         except Exception:
             intent = {}
+
+        if not intent.get("is_document_query", True):
+            return jsonify({"answer": "Ich bin dein Assistent für die Dokumentenablage. Stelle mir Fragen zu deinen Dokumenten — z.B. nach Rechnungen, Verträgen oder Absendern.", "documents": []})
 
         doc_type = intent.get("document_type") or None
         sender   = intent.get("sender") or None
