@@ -258,7 +258,10 @@ def document(doc_id: int) -> str:
         abort(404)
     graph_enabled = bool(os.getenv("TENANT_ID") and os.getenv("CLIENT_ID"))
     local_path = _local_onedrive_path(doc.get("onedrive_path") or "")
-    local_file_exists = bool(local_path and _ARCHIVE_ROOT and (_ARCHIVE_ROOT / local_path).is_file())
+    try:
+        local_file_exists = bool(local_path and _ARCHIVE_ROOT and (_ARCHIVE_ROOT / local_path).is_file())
+    except PermissionError:
+        local_file_exists = False
     can_open = local_file_exists or bool(graph_enabled and doc.get("onedrive_path"))
     # Build back URL from search params passed in the URL, fall back to referrer
     # Explicit back param takes priority (e.g. ?back=/duplicates from duplicate alert link)
