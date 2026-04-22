@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
     ablage:
-        image: ghcr.io/minenmaster/pdf-renamer:latest
+        image: ghcr.io/minenmaster/ablage:latest
         restart: unless-stopped
         environment:
             - OPENAI_API_KEY=replace-me
@@ -44,7 +44,7 @@ services:
             # - ./classification_rules.yaml:/app/classification_rules.yaml:ro
 
     ablage-web:
-        image: ghcr.io/minenmaster/pdf-renamer:latest
+        image: ghcr.io/minenmaster/ablage:latest
         restart: unless-stopped
         command: ["python", "web/app.py"]
         environment:
