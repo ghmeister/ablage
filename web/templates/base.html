@@ -62,32 +62,22 @@
           title="OpenAI API-Kosten anzeigen"></span>
 
     <div class="ms-auto d-flex align-items-center gap-2">
-      {# Desktop: all links visible #}
-      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/statistik">Statistik</a>
-      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/steuern">Steuern</a>
-      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/duplicates">Duplikate</a>
-      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/kosten">Kosten</a>
-      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/logs">Log</a>
-      <a class="btn btn-outline-danger btn-sm d-none d-md-inline" href="/logout">Abmelden</a>
-
-      {# Mobile: hamburger + abmelden #}
-      <a class="btn btn-outline-danger btn-sm d-md-none" href="/logout">Abmelden</a>
-      <button class="navbar-toggler d-md-none" type="button"
-              data-bs-toggle="collapse" data-bs-target="#navMenu"
-              aria-controls="navMenu" aria-expanded="false">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-    </div>
-  </div>
-
-  {# Mobile collapse menu #}
-  <div class="collapse d-md-none w-100" id="navMenu">
-    <div class="container-fluid pb-2 d-flex flex-column gap-2">
-      <a class="btn btn-outline-secondary btn-sm w-100" href="/statistik">Statistik</a>
-      <a class="btn btn-outline-secondary btn-sm w-100" href="/steuern">Steuern</a>
-      <a class="btn btn-outline-secondary btn-sm w-100" href="/duplicates">Duplikate</a>
-      <a class="btn btn-outline-secondary btn-sm w-100" href="/kosten">Kosten</a>
-      <a class="btn btn-outline-secondary btn-sm w-100" href="/logs">Log</a>
+      <div class="dropdown">
+        <button class="navbar-toggler" type="button"
+                data-bs-toggle="dropdown" data-bs-auto-close="true"
+                aria-expanded="false">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow">
+          <li><a class="dropdown-item" href="/statistik">📊 Statistik</a></li>
+          <li><a class="dropdown-item" href="/steuern">🧾 Steuern</a></li>
+          <li><a class="dropdown-item" href="/duplicates">🔁 Duplikate</a></li>
+          <li><a class="dropdown-item" href="/kosten">💰 Kosten</a></li>
+          <li><a class="dropdown-item" href="/logs">📋 Log</a></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><a class="dropdown-item text-danger" href="/logout">Abmelden</a></li>
+        </ul>
+      </div>
     </div>
   </div>
 </nav>
