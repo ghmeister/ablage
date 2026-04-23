@@ -173,6 +173,57 @@
     [data-theme="obsidian"] .dropdown-item:hover { background: var(--app-accent-soft); }
     [data-theme="obsidian"] .dropdown-divider { border-color: var(--app-border); }
 
+    /* ── Tables (obsidian) ──────────────────────────────────────────── */
+    [data-theme="obsidian"] .table {
+      --bs-table-bg:           transparent;
+      --bs-table-color:        var(--app-text);
+      --bs-table-hover-bg:     rgba(255,255,255,.06);
+      --bs-table-hover-color:  var(--app-text);
+      --bs-table-striped-bg:   rgba(255,255,255,.03);
+      --bs-table-active-bg:    rgba(255,255,255,.08);
+      border-color: var(--app-border);
+    }
+    [data-theme="obsidian"] .table-light,
+    [data-theme="obsidian"] .table-dark {
+      --bs-table-bg:    rgba(255,255,255,.06);
+      --bs-table-color: var(--app-text);
+      border-color: var(--app-border);
+    }
+    [data-theme="obsidian"] .table-responsive { background: transparent; }
+    [data-theme="obsidian"] .bg-white { background-color: var(--app-surface) !important; }
+    [data-theme="obsidian"] .table-hover tbody tr:hover td { color: var(--app-text); }
+
+    /* ── Filter panel / card overrides (obsidian) ───────────────────── */
+    [data-theme="obsidian"] .card.border-0 { border: 1px solid var(--app-border) !important; }
+    [data-theme="obsidian"] .list-group-item {
+      background: transparent;
+      border-color: var(--app-border);
+      color: var(--app-text);
+    }
+    [data-theme="obsidian"] .page-link {
+      background: var(--app-surface);
+      border-color: var(--app-border);
+      color: var(--app-text);
+    }
+    [data-theme="obsidian"] .page-item.active .page-link {
+      background: var(--app-accent);
+      border-color: var(--app-accent);
+    }
+    [data-theme="obsidian"] .page-item.disabled .page-link { color: var(--app-text-muted); }
+    [data-theme="obsidian"] hr { border-color: var(--app-border); }
+    [data-theme="obsidian"] .text-dark { color: var(--app-text) !important; }
+    [data-theme="obsidian"] .text-muted { color: var(--app-text-muted) !important; }
+    [data-theme="obsidian"] .badge.bg-light { background: rgba(255,255,255,.12) !important; color: var(--app-text) !important; }
+    [data-theme="obsidian"] .btn-outline-secondary {
+      color: var(--app-text-muted);
+      border-color: var(--app-border);
+    }
+    [data-theme="obsidian"] .btn-outline-secondary:hover {
+      background: var(--app-surface-2);
+      color: var(--app-text);
+    }
+    [data-theme="obsidian"] .btn-close { filter: invert(1); }
+
     /* ── Alert / banner ─────────────────────────────────────────────── */
     [data-theme="obsidian"] .alert-warning {
       background: rgba(255,193,7,.12);
