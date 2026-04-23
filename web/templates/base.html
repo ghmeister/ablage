@@ -53,17 +53,38 @@
 <nav class="navbar navbar-dark bg-dark mb-4 shadow-sm">
   <div class="container-fluid">
     <a class="navbar-brand fw-semibold" href="/">📄 Meisters Ablage</a>
-    <span class="text-secondary small">v{{ app_version }}{% if git_commit %} ({{ git_commit }}){% endif %}</span>
+    <span class="text-secondary small d-none d-md-inline">v{{ app_version }}{% if git_commit %} ({{ git_commit }}){% endif %}</span>
     <span id="costBadge"
           class="text-secondary small ms-3 d-none"
           style="cursor:pointer"
           data-bs-toggle="modal"
           data-bs-target="#costModal"
           title="OpenAI API-Kosten anzeigen"></span>
-    <a class="btn btn-outline-secondary btn-sm ms-auto me-2" href="/steuern">Steuern</a>
-    <a class="btn btn-outline-secondary btn-sm me-2" href="/duplicates">Duplikate</a>
-    <a class="btn btn-outline-secondary btn-sm me-2" href="/logs">Log</a>
-    <a class="btn btn-outline-danger btn-sm" href="/logout">Abmelden</a>
+
+    <div class="ms-auto d-flex align-items-center gap-2">
+      {# Desktop: all links visible #}
+      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/steuern">Steuern</a>
+      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/duplicates">Duplikate</a>
+      <a class="btn btn-outline-secondary btn-sm d-none d-md-inline" href="/logs">Log</a>
+      <a class="btn btn-outline-danger btn-sm d-none d-md-inline" href="/logout">Abmelden</a>
+
+      {# Mobile: hamburger + abmelden #}
+      <a class="btn btn-outline-danger btn-sm d-md-none" href="/logout">Abmelden</a>
+      <button class="navbar-toggler d-md-none" type="button"
+              data-bs-toggle="collapse" data-bs-target="#navMenu"
+              aria-controls="navMenu" aria-expanded="false">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </div>
+  </div>
+
+  {# Mobile collapse menu #}
+  <div class="collapse d-md-none w-100" id="navMenu">
+    <div class="container-fluid pb-2 d-flex flex-column gap-2">
+      <a class="btn btn-outline-secondary btn-sm w-100" href="/steuern">Steuern</a>
+      <a class="btn btn-outline-secondary btn-sm w-100" href="/duplicates">Duplikate</a>
+      <a class="btn btn-outline-secondary btn-sm w-100" href="/logs">Log</a>
+    </div>
   </div>
 </nav>
 
@@ -104,7 +125,8 @@
       const badge = document.getElementById('costBadge');
       if (badge) {
         badge.textContent = '💰 Heute: ' + fmt(data.today_usd) + ' · Total: ' + fmtFull(data.total_usd);
-        badge.classList.remove('d-none');
+        // only show on desktop (≥768 px)
+        if (window.innerWidth >= 768) badge.classList.remove('d-none');
       }
       const body = document.getElementById('costModalBody');
       if (!body) return;
