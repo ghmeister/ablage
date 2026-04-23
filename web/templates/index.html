@@ -167,7 +167,7 @@
           </span>{% if row.tax_relevant %} <span title="Steuerrelevant" style="color:#ffc107;font-size:0.75rem">★</span>{% endif %}{% if row.email_source %} <span title="Per E-Mail erhalten" style="font-size:0.75rem">✉</span>{% endif %}
         </td>
         <td class="small">{{ row.sender or row.company or '–' }}</td>
-        <td class="small">{{ row.recipient or '–' }}</td>
+        <td class="small">{{ row.recipient | recipient }}</td>
         <td class="small text-muted text-truncate" style="max-width:180px"
             title="{{ row.destination_folder }}">{{ row.destination_folder or '–' }}</td>
         <td class="small text-muted text-nowrap">

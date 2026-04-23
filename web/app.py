@@ -100,6 +100,23 @@ _GIT_COMMIT  = os.getenv("GIT_COMMIT", "")[:7]
 
 _PER_PAGE = 25
 
+# ---------------------------------------------------------------------------
+# Recipient normalization — maps verbose DB recipient strings to short first names
+# ---------------------------------------------------------------------------
+_FAMILY_FIRST_NAMES = ["Manuel", "Judith", "Clara", "Nora", "Dominik"]
+
+def _normalize_recipient(raw: str | None) -> str:
+    """Return comma-joined first names found in the recipient string, or the raw value."""
+    if not raw:
+        return "–"
+    found = [n for n in _FAMILY_FIRST_NAMES if n in raw]
+    if found:
+        return ", ".join(found)
+    # Fallback: truncate very long raw values
+    return raw[:40] + ("…" if len(raw) > 40 else "")
+
+app.jinja_env.filters["recipient"] = _normalize_recipient
+
 
 @app.context_processor
 def inject_globals():

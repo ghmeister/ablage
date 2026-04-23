@@ -50,3 +50,136 @@ type_colors:
   payslip:          "success"
   donation_receipt: "info text-dark"
   other:            "secondary"
+
+# ── Natural-language search hints ────────────────────────────────────────────
+# These teach the KI-Suche intent extractor how to map German category words
+# to exact sender/type filters, derived from analysing the actual archive content.
+#
+# Each hint has:
+#   triggers  – German words/phrases that activate this hint
+#   sender    – value passed to the DB sender LIKE %...% filter (use company name)
+#   type      – document_type value (optional)
+#   note      – human-readable explanation (ignored by code)
+
+nl_hints:
+  - triggers: ["Strom", "Elektrizität", "Stromrechnung", "Strombezug", "Energierechnung", "Photovoltaik"]
+    sender: "BKW"
+    type: "invoice"
+    note: "BKW Energie AG is the electricity/solar provider"
+
+  - triggers: ["Krankenkasse", "Krankenversicherung", "KK", "Grundversicherung", "Krankenkassenprämie", "Zusatzversicherung Kranken", "KPT"]
+    sender: "KPT"
+    type: "insurance"
+    note: "KPT is the health insurer for Manuel, Dominik, Clara; Visana for Judith"
+
+  - triggers: ["Visana", "Krankenkasse Judith"]
+    sender: "Visana"
+    type: "insurance"
+    note: "Visana is Judith's health insurer"
+
+  - triggers: ["Gebäudeversicherung", "Hausversicherung", "Liegenschaftsversicherung", "GVB"]
+    sender: "GVB"
+    type: "insurance"
+    note: "GVB (Gebäudeversicherung Bern) covers the house"
+
+  - triggers: ["Hausrat", "Haftpflicht", "Mobiliar", "Unfallversicherung Judith", "UVG"]
+    sender: "Mobiliar"
+    type: "insurance"
+    note: "Mobiliar covers household contents, liability, UVG for Judith"
+
+  - triggers: ["Lebensversicherung", "Kapitalversicherung", "Fondsversicherung", "Allianz Versicherung", "Erwerbsunfähigkeit", "Berufsunfähigkeit", "Motorfahrzeugversicherung", "Autoversicherung"]
+    sender: "Allianz"
+    type: "insurance"
+    note: "Allianz: life insurance, car insurance, disability insurance for Manuel/Judith"
+
+  - triggers: ["Serafe", "TV-Abgabe", "Rundfunkabgabe", "Billag", "Radio- und Fernsehgebühr"]
+    sender: "Serafe"
+    type: "invoice"
+    note: "Serafe collects the Swiss broadcast fee"
+
+  - triggers: ["Musikunterricht", "Musikschule", "Akkordeon", "Musiklektion"]
+    sender: "Musikschule"
+    type: "invoice"
+    note: "Musikschule Region Gürbetal: music lessons for Clara and Nora"
+
+  - triggers: ["Tagesschule", "Kita", "Kinderbetreuung", "Kibe", "Krippe", "Tagesmutter"]
+    sender: "Tagesschule"
+    type: "invoice"
+    note: "Tagesschule Kehrsatz / kibeplus: childcare invoices"
+
+  - triggers: ["Kreditkartenabrechnung", "American Express", "Amex", "Kreditkarte Swisscard"]
+    sender: "Swisscard"
+    type: "bank_statement"
+    note: "Swisscard AECS issues the American Express card statements"
+
+  - triggers: ["PostFinance", "PostFinance Konto"]
+    sender: "PostFinance"
+    type: "bank_statement"
+    note: "PostFinance bank statements"
+
+  - triggers: ["Raiffeisen", "Raiffeisenbank", "Bankkontoauszug", "Vermögensverzeichnis", "Zins- und Saldoverzeichnis", "Hypothek"]
+    sender: "Raiffeisen"
+    note: "Raiffeisen: main bank, mortgage, Clara's youth account"
+
+  - triggers: ["Lohnausweis", "Arbeitgeber Manuel", "Accenture Lohn", "Gehalt Manuel"]
+    sender: "Accenture"
+    type: "tax"
+    note: "Accenture is Manuel's employer; Lohnausweis is classified as tax doc"
+
+  - triggers: ["Zahnarzt", "Dentalpraxis", "Dental", "Kieferorthopäde", "Zahnspange"]
+    sender: "Dentalpraxis"
+    type: "invoice"
+    note: "Dentalpraxis dental invoices for the family"
+
+  - triggers: ["Steuerrechnung", "Steuer Kanton", "Steuer Gemeinde", "Einkommenssteuer", "Gemeindesteuer"]
+    sender: "Bern"
+    type: "tax"
+    note: "Canton/municipality Bern issues tax bills"
+
+  - triggers: ["Rechtsschutz", "Rechtsschutzversicherung", "CAP"]
+    sender: "CAP"
+    type: "insurance"
+    note: "CAP Rechtsschutz = legal protection insurance"
+
+  - triggers: ["Swissquote", "Depot", "Wertschriften", "Aktien"]
+    sender: "Swissquote"
+    type: "bank_statement"
+    note: "Swissquote investment/securities account"
+
+  - triggers: ["Taxi", "Taxirechnung"]
+    sender: "Taxi"
+    type: "invoice"
+    note: "Various taxi providers: AvantgardeTaxi, TaxiKurt, Orientaltaxi etc."
+
+  - triggers: ["Helion", "Solaranlage", "Photovoltaikanlage", "Solar"]
+    sender: "Helion"
+    type: "invoice"
+    note: "Helion: solar panel installation/maintenance"
+
+  - triggers: ["Previs", "BVG", "Pensionskasse", "2. Säule"]
+    sender: "Previs"
+    type: "tax"
+    note: "Previs: pension fund (BVG) for Manuel"
+
+  - triggers: ["Allianz Lohnausweis", "Raiffeisen Lohnausweis"]
+    sender: "Raiffeisen"
+    type: "tax"
+    note: "Raiffeisen also issues Lohnausweis (salary certificate)"
+
+  - triggers: ["Rega", "Rettungsflugwacht"]
+    sender: "Rega"
+    type: "invoice"
+    note: "Rega: Swiss air rescue service membership"
+
+# Family members — used to add a keyword filter when a member is mentioned
+nl_family_members:
+  - name: "Manuel"
+    aliases: ["Manuel", "Papa", "Manuels"]
+  - name: "Judith"
+    aliases: ["Judith", "Mama", "Judiths"]
+  - name: "Clara"
+    aliases: ["Clara", "Claras"]
+  - name: "Nora"
+    aliases: ["Nora", "Noras"]
+  - name: "Dominik"
+    aliases: ["Dominik", "Dominiks"]

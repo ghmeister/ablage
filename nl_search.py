@@ -4,26 +4,59 @@ Shared natural-language search logic used by telegram_bot.py and web/app.py.
 from __future__ import annotations
 
 import json as _json
+import os as _os
 from typing import Any
+
+
+def _load_nl_hints() -> str:
+    """Load nl_hints from classification_rules.yaml and format as a compact string
+    for injection into the intent extraction prompt."""
+    try:
+        import yaml
+        rules_file = _os.getenv("CLASSIFICATION_RULES_FILE", "classification_rules.yaml")
+        with open(rules_file, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        hints = cfg.get("nl_hints") or []
+        members = cfg.get("nl_family_members") or []
+        lines: list[str] = ["Archive-specific category→sender mappings (use these to set sender/type):"]
+        for h in hints:
+            triggers = " / ".join(h.get("triggers") or [])
+            parts = [f'  "{triggers}"']
+            if h.get("sender"):
+                parts.append(f'→ sender="{h["sender"]}"')
+            if h.get("type"):
+                parts.append(f'+ type="{h["type"]}"')
+            if h.get("note"):
+                parts.append(f'({h["note"]})')
+            lines.append(" ".join(parts))
+        if members:
+            names = ", ".join(m["name"] for m in members)
+            lines.append(
+                f"Family members: {names}. When a member name is mentioned, "
+                "include it as a keyword to filter their specific documents."
+            )
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+_NL_HINTS = _load_nl_hints()
 
 
 _INTENT_SYSTEM = (
     "You extract search intent from a question about a personal document archive. "
     "Known document types in the archive: {known_types}. "
     "Known senders in the archive: {known_senders}. "
+    "{nl_hints}\n"
     "The conversation history is provided so you can resolve references like "
     "'Und von KPT?', 'die gleichen aber von 2024', 'Wie viel war das insgesamt?' etc. "
     "Use the previous questions and answers to understand what the current question refers to. "
-    "IMPORTANT for sender extraction: when the user asks about a category (e.g. 'Strom', "
-    "'Versicherung', 'Internet'), look at the known senders list and pick the sender that "
-    "matches that category. For example if 'BKW Energie AG' is a known sender, then "
-    "'Strom'/'Elektrizität' questions should set sender='BKW Energie AG'. "
-    "Prefer setting sender over keywords when a matching sender exists — sender filtering "
-    "is exact and reliable, keyword search is fuzzy. "
+    "IMPORTANT: Prefer setting sender over keywords when a category→sender mapping exists — "
+    "sender filtering is exact and reliable, keyword search is fuzzy. "
     "Return JSON with these fields:\n"
     '{{"is_document_query": true|false,\n'
     ' "document_type": "<exact type from known list or null>",\n'
-    ' "sender": "<exact sender name from known list or null>",\n'
+    ' "sender": "<short company name, e.g. BKW / KPT / Allianz / Mobiliar — or null>",\n'
     ' "year": "<4-digit year or null>",\n'
     ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
     ' "sort": "date_desc" | "date_asc" | "relevance",\n'
@@ -104,7 +137,9 @@ def run(
     # ── Step 1: extract structured query intent ───────────────────────────────
     intent_messages = [
         {"role": "system", "content": _INTENT_SYSTEM.format(
-            known_types=known_types, known_senders=known_senders
+            known_types=known_types,
+            known_senders=known_senders,
+            nl_hints=_NL_HINTS,
         )},
         *recent_history,
         {"role": "user", "content": question},
