@@ -208,6 +208,8 @@
 </div>
 
 <script>
+const conversationHistory = [];
+
 const TYPE_COLORS_HEX = {
   invoice:'#dc3545', insurance:'#0d6efd', tax:'#ffc107',
   medical_report:'#198754', bank_statement:'#0dcaf0', contract:'#6f42c1',
@@ -262,7 +264,7 @@ function ask() {
   fetch('/api/nl-search', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({question: q}),
+    body: JSON.stringify({question: q, history: conversationHistory}),
   })
   .then(r => r.json())
   .then(data => {
@@ -273,8 +275,13 @@ function ask() {
     if (data.error) {
       answerWrap.innerHTML = `<div class="ki-bubble-answer text-danger">Fehler: ${escHtml(data.error)}</div>`;
     } else {
-      let html = `<div class="ki-bubble-answer">${escHtml(data.answer || '–')}</div>`;
+      const answerText = data.answer || '–';
+      let html = `<div class="ki-bubble-answer">${escHtml(answerText)}</div>`;
       answerWrap.innerHTML = html;
+
+      /* update conversation history for follow-up context */
+      conversationHistory.push({role: 'user', content: q});
+      conversationHistory.push({role: 'assistant', content: answerText});
 
       if (data.documents && data.documents.length) {
         const docsEl = document.createElement('div');

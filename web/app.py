@@ -305,6 +305,11 @@ def nl_search():
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"error": "question required"}), 400
+    history = [
+        {"role": str(m.get("role", "")), "content": str(m.get("content", ""))}
+        for m in (data.get("history") or [])
+        if m.get("role") in ("user", "assistant") and m.get("content")
+    ]
 
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -315,6 +320,7 @@ def nl_search():
             openai_api_key=openai_api_key,
             db=db_module,
             nl_max_distance=float(os.getenv("NL_MAX_DISTANCE", "1.05")),
+            history=history,
         )
 
         id_to_doc     = {doc["id"]: doc for doc in result["rows"]}
