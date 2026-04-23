@@ -10,13 +10,20 @@ from typing import Any
 _INTENT_SYSTEM = (
     "You extract search intent from a question about a personal document archive. "
     "Known document types in the archive: {known_types}. "
+    "Known senders in the archive: {known_senders}. "
     "The conversation history is provided so you can resolve references like "
     "'Und von KPT?', 'die gleichen aber von 2024', 'Wie viel war das insgesamt?' etc. "
     "Use the previous questions and answers to understand what the current question refers to. "
+    "IMPORTANT for sender extraction: when the user asks about a category (e.g. 'Strom', "
+    "'Versicherung', 'Internet'), look at the known senders list and pick the sender that "
+    "matches that category. For example if 'BKW Energie AG' is a known sender, then "
+    "'Strom'/'Elektrizität' questions should set sender='BKW Energie AG'. "
+    "Prefer setting sender over keywords when a matching sender exists — sender filtering "
+    "is exact and reliable, keyword search is fuzzy. "
     "Return JSON with these fields:\n"
     '{{"is_document_query": true|false,\n'
     ' "document_type": "<exact type from known list or null>",\n'
-    ' "sender": "<company or person name or null>",\n'
+    ' "sender": "<exact sender name from known list or null>",\n'
     ' "year": "<4-digit year or null>",\n'
     ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
     ' "sort": "date_desc" | "date_asc" | "relevance",\n'
@@ -83,13 +90,22 @@ def run(
         ", ".join(t for t, _ in (stats.get("by_type") or []) if t)
         or "invoice, insurance, tax, contract, quote"
     )
+    known_senders = (
+        ", ".join(
+            r["name"] for r in (stats.get("top_senders") or [])
+            if r.get("name") and r["name"] != "(unbekannt)"
+        )
+        or "unknown"
+    )
 
     # Trim history to last N messages
     recent_history: list[dict] = (history or [])[-_MAX_HISTORY:]
 
     # ── Step 1: extract structured query intent ───────────────────────────────
     intent_messages = [
-        {"role": "system", "content": _INTENT_SYSTEM.format(known_types=known_types)},
+        {"role": "system", "content": _INTENT_SYSTEM.format(
+            known_types=known_types, known_senders=known_senders
+        )},
         *recent_history,
         {"role": "user", "content": question},
     ]
@@ -175,19 +191,12 @@ def run(
             chunk_context.setdefault(doc_id, chunk_text)
 
     if is_aggregation:
-        # A. Structured DB first (deterministic, respects filters)
+        # For aggregation (sum/count) queries run both retrieval paths and merge.
+        # Structured DB is deterministic and respects exact filters (sender, year).
+        # Doc-level semantic captures category → sender mappings that FTS keywords
+        # may miss (e.g. "Strom" in the question vs "Elektrizität" in the document).
+        # Both run at full limit so neither can crowd out the other.
         _add_db_rows()
-        # B. Semantic only to fill remaining slots
-        if len(rows) < limit:
-            _add_chunk_rows(limit - len(rows))
-    else:
-        # A. Chunk-level semantic search first (better for relevance queries)
-        _add_chunk_rows(limit)
-        # B. Structured DB to fill gaps
-        _add_db_rows()
-
-    # C. Doc-level vector fallback
-    if len(rows) < limit:
         for doc_id, _ in db.search_by_embedding(
             question_vec, k=limit, max_distance=nl_max_distance
         ):
@@ -196,6 +205,24 @@ def run(
                 if doc:
                     rows.append(doc)
                     seen_ids.add(doc_id)
+        # Chunk semantic last to fill any remaining gap
+        if len(rows) < limit:
+            _add_chunk_rows(limit - len(rows))
+    else:
+        # A. Chunk-level semantic search first (better for relevance queries)
+        _add_chunk_rows(limit)
+        # B. Structured DB to fill gaps
+        _add_db_rows()
+        # C. Doc-level vector fallback
+        if len(rows) < limit:
+            for doc_id, _ in db.search_by_embedding(
+                question_vec, k=limit, max_distance=nl_max_distance
+            ):
+                if doc_id not in seen_ids:
+                    doc = db.get_document(doc_id)
+                    if doc:
+                        rows.append(doc)
+                        seen_ids.add(doc_id)
 
     if sort in ("date_desc", "date_asc"):
         rows.sort(
