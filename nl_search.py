@@ -59,6 +59,7 @@ def run(
     """
     from openai import OpenAI
     from embed import get_embedding
+    import cost_tracker
 
     client = OpenAI(api_key=openai_api_key)
     stats = db.get_statistics()
@@ -77,6 +78,7 @@ def run(
         max_tokens=150,
         response_format={"type": "json_object"},
     )
+    cost_tracker.log("gpt-4o-mini", "nl_intent", intent_resp.usage)
     try:
         intent: dict = _json.loads(intent_resp.choices[0].message.content)
     except Exception:
@@ -196,6 +198,7 @@ def run(
         response_format={"type": "json_object"},
     )
 
+    cost_tracker.log("gpt-4o-mini", "nl_answer", answer_resp.usage)
     try:
         gpt_result     = _json.loads(answer_resp.choices[0].message.content)
         answer_text    = gpt_result.get("answer", "")

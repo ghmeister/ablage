@@ -6,6 +6,7 @@ import json
 import os
 from typing import Optional
 from openai import OpenAI
+import cost_tracker
 
 
 class AIRenamer:
@@ -163,6 +164,7 @@ class AIRenamer:
                 ],
             )
 
+            cost_tracker.log("gpt-4o-mini", "classification", response.usage)
             raw = response.choices[0].message.content.strip()
             data = json.loads(raw)
 
@@ -237,6 +239,7 @@ class AIRenamer:
                     {"role": "user", "content": user_prompt},
                 ],
             )
+            cost_tracker.log("gpt-4o-mini", "classification_filename", response.usage)
             raw = response.choices[0].message.content.strip()
             data = json.loads(raw)
             return {

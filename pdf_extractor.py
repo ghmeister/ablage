@@ -113,12 +113,14 @@ class PDFExtractor:
                     },
                 })
 
+            import cost_tracker
             client = OpenAI(api_key=api_key)
             resp = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": content}],
                 max_tokens=4000,
             )
+            cost_tracker.log("gpt-4o", "ocr", resp.usage)
             return resp.choices[0].message.content or ""
 
         except Exception as e:

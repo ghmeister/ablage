@@ -670,5 +670,11 @@ def open_pdf(doc_id: int):
     return send_file(str(pdf_path), mimetype="application/pdf")
 
 
+@app.route("/api/costs")
+def api_costs():
+    import cost_tracker
+    return jsonify(cost_tracker.get_summary())
+
+
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=5000)

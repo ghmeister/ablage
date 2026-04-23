@@ -60,6 +60,8 @@ def get_embedding(text: str, api_key: str, max_retries: int = 3) -> list[float]:
                 model=EMBEDDING_MODEL,
                 input=text[:8000],
             )
+            import cost_tracker
+            cost_tracker.log(EMBEDDING_MODEL, "embedding", response.usage)
             vector = response.data[0].embedding
             assert len(vector) == EMBEDDING_DIMS, (
                 f"Unexpected embedding dimensions: got {len(vector)}, expected {EMBEDDING_DIMS}"
