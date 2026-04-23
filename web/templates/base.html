@@ -314,6 +314,8 @@
           <span class="navbar-toggler-icon"></span>
         </button>
         <ul class="dropdown-menu dropdown-menu-end shadow">
+          <li><a class="dropdown-item" href="/ki">✨ KI-Suche</a></li>
+          <li><a class="dropdown-item" href="/">🔍 Dokumentensuche</a></li>
           <li><a class="dropdown-item" href="/statistik">📊 Statistik</a></li>
           <li><a class="dropdown-item" href="/steuern">🧾 Steuern</a></li>
           <li><a class="dropdown-item" href="/duplicates">🔁 Duplikate</a></li>
@@ -406,7 +408,7 @@
     <span class="tab-icon">🏠</span>
     <span>Suche</span>
   </a>
-  <a href="#nlInput" class="tab-item" id="tabAI" onclick="focusNL(event)">
+  <a href="/ki" class="tab-item {% if request.path == '/ki' %}active{% endif %}">
     <span class="tab-icon">✨</span>
     <span>KI</span>
   </a>
@@ -474,16 +476,6 @@
     applyTheme(current);
   });
 })();
-
-/* ── NL tab: focus search if on home page, else navigate ─────────────── */
-function focusNL(e) {
-  var inp = document.getElementById('nlInput');
-  if (inp) {
-    e.preventDefault();
-    inp.focus();
-    inp.scrollIntoView({behavior:'smooth', block:'center'});
-  }
-}
 
 /* ── Cost badge ───────────────────────────────────────────────────────── */
 (function () {

@@ -290,6 +290,11 @@ def document(doc_id: int) -> str:
     )
 
 
+@app.route("/ki")
+def ki():
+    return render_template("ki.html", type_labels=TYPE_LABELS, type_colors=TYPE_COLORS)
+
+
 @app.route("/api/nl-search", methods=["POST"])
 def nl_search():
     openai_api_key = os.getenv("OPENAI_API_KEY", "")

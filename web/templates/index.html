@@ -22,34 +22,6 @@
   </div>
 </div>
 
-{# ── NL Search ────────────────────────────────────────────────────── #}
-<div class="mb-3">
-  <div class="input-group">
-    <span class="input-group-text bg-primary text-white border-primary" title="KI-Suche">✨</span>
-    <input type="text" id="nlInput" class="form-control"
-           placeholder="Frage stellen … z.B. «Wie viel habe ich 2025 für mein Velo bezahlt?»">
-    <button class="btn btn-primary" id="nlBtn" type="button">Fragen</button>
-  </div>
-</div>
-
-<div id="nlResult" class="d-none mb-4">
-  <div class="card border-primary shadow-sm">
-    <div class="card-body">
-      <div id="nlSpinner" class="text-center py-3 d-none">
-        <div class="spinner-border text-primary" role="status"></div>
-        <div class="text-muted small mt-2">KI sucht …</div>
-      </div>
-      <div id="nlAnswer" class="d-none">
-        <p class="mb-3" id="nlAnswerText" style="white-space:pre-wrap"></p>
-        <div id="nlDocs"></div>
-      </div>
-      <div id="nlError" class="text-danger d-none"></div>
-    </div>
-  </div>
-</div>
-
-<hr class="mb-3">
-
 {# ── Search / Filter Form ─────────────────────────────────────────── #}
 <form method="get" action="/" id="filterForm">
 
@@ -297,80 +269,6 @@
   {% endif %}
 </div>
 {% endif %}
-
-<script>
-// ── NL Search ──────────────────────────────────────────────────────────────
-(function() {
-  const input   = document.getElementById('nlInput');
-  const btn     = document.getElementById('nlBtn');
-  const result  = document.getElementById('nlResult');
-  const spinner = document.getElementById('nlSpinner');
-  const answer  = document.getElementById('nlAnswer');
-  const answerText = document.getElementById('nlAnswerText');
-  const docsEl  = document.getElementById('nlDocs');
-  const errorEl = document.getElementById('nlError');
-
-  async function runNlSearch() {
-    const q = input.value.trim();
-    if (!q) return;
-
-    result.classList.remove('d-none');
-    spinner.classList.remove('d-none');
-    answer.classList.add('d-none');
-    errorEl.classList.add('d-none');
-    btn.disabled = true;
-
-    try {
-      const resp = await fetch('/api/nl-search', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({question: q}),
-      });
-      const data = await resp.json();
-      spinner.classList.add('d-none');
-
-      if (!resp.ok || data.error) {
-        errorEl.textContent = 'Fehler: ' + (data.error || resp.statusText);
-        errorEl.classList.remove('d-none');
-      } else {
-        answerText.textContent = data.answer || '';
-        docsEl.innerHTML = '';
-        if (data.documents && data.documents.length) {
-          const heading = document.createElement('p');
-          heading.className = 'fw-semibold small text-muted mb-2';
-          heading.textContent = 'Passende Dokumente:';
-          docsEl.appendChild(heading);
-          data.documents.forEach(doc => {
-            const card = document.createElement('a');
-            card.href = '/document/' + doc.id;
-            card.className = 'text-decoration-none d-block';
-            card.innerHTML = `
-              <div class="card card-body py-2 px-3 mb-2 bg-light border hover-shadow">
-                <div class="d-flex align-items-center gap-2 flex-wrap">
-                  <span class="badge bg-${doc.type_color}">${doc.type_label || doc.document_type || '–'}</span>
-                  <strong class="text-dark">${doc.new_filename}</strong>
-                  <span class="text-muted small">${doc.document_date || ''}</span>
-                  ${doc.sender ? `<span class="text-muted small">· ${doc.sender}</span>` : ''}
-                </div>
-                ${doc.chunk_text ? `<p class="small text-muted mb-0 mt-1 fst-italic">"${doc.chunk_text.substring(0, 200).trim()}…"</p>` : ''}
-              </div>`;
-            docsEl.appendChild(card);
-          });
-        }
-        answer.classList.remove('d-none');
-      }
-    } catch(e) {
-      spinner.classList.add('d-none');
-      errorEl.textContent = 'Netzwerkfehler: ' + e.message;
-      errorEl.classList.remove('d-none');
-    }
-    btn.disabled = false;
-  }
-
-  btn.addEventListener('click', runNlSearch);
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') runNlSearch(); });
-})();
-</script>
 
 <script>
 // Poll bot status every 5s — show banner when processing

@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}KI-Suche{% endblock %}
+{% block content %}
+
+<style>
+  /* ── Chat layout ────────────────────────────────────────────────── */
+  .ki-wrap {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 90px); /* full height minus navbar */
+  }
+  @media (max-width: 767.98px) {
+    [data-theme="obsidian"] .ki-wrap,
+    [data-theme="sakura"]   .ki-wrap { height: calc(100dvh - 150px); } /* minus navbar + tab bar */
+  }
+
+  .ki-history {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 0 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── Bubbles ──────────────────────────────────────────────────── */
+  .ki-bubble-wrap { display: flex; flex-direction: column; gap: 6px; }
+
+  .ki-bubble-question {
+    align-self: flex-end;
+    max-width: 82%;
+    background: var(--app-accent);
+    color: #fff;
+    border-radius: 18px 18px 4px 18px;
+    padding: 10px 15px;
+    font-size: .92rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+
+  .ki-bubble-answer {
+    align-self: flex-start;
+    max-width: 92%;
+    background: var(--app-surface);
+    color: var(--app-text);
+    border: 1px solid var(--app-border);
+    border-radius: 4px 18px 18px 18px;
+    padding: 12px 15px;
+    font-size: .92rem;
+    box-shadow: var(--app-card-shadow);
+    white-space: pre-wrap;
+  }
+  [data-theme="obsidian"] .ki-bubble-answer {
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+  }
+
+  .ki-bubble-docs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-left: 4px;
+  }
+
+  .ki-doc-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--app-surface-2);
+    border: 1px solid var(--app-border);
+    border-radius: 12px;
+    padding: 8px 12px;
+    text-decoration: none;
+    color: var(--app-text);
+    transition: background .15s;
+    font-size: .82rem;
+  }
+  .ki-doc-chip:hover { background: var(--app-accent-soft); color: var(--app-text); }
+  .ki-doc-chip .chip-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+  }
+  .ki-doc-chip .chip-meta { color: var(--app-text-muted); white-space: nowrap; font-size: .75rem; }
+
+  /* ── Thinking indicator ─────────────────────────────────────────── */
+  .ki-thinking {
+    align-self: flex-start;
+    display: flex;
+    gap: 5px;
+    padding: 10px 14px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    border-radius: 4px 18px 18px 18px;
+  }
+  .ki-thinking span {
+    width: 8px; height: 8px;
+    background: var(--app-accent);
+    border-radius: 50%;
+    animation: ki-bounce 1.2s infinite ease-in-out;
+    opacity: .6;
+  }
+  .ki-thinking span:nth-child(2) { animation-delay: .2s; }
+  .ki-thinking span:nth-child(3) { animation-delay: .4s; }
+  @keyframes ki-bounce {
+    0%,80%,100% { transform: translateY(0); }
+    40%          { transform: translateY(-6px); opacity: 1; }
+  }
+
+  /* ── Empty state ────────────────────────────────────────────────── */
+  .ki-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    color: var(--app-text-muted);
+    text-align: center;
+    padding: 24px;
+  }
+  .ki-empty-icon { font-size: 3.5rem; opacity: .6; }
+  .ki-suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 8px; }
+  .ki-suggestion {
+    padding: 7px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--app-border);
+    background: var(--app-surface);
+    color: var(--app-text-muted);
+    font-size: .82rem;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .ki-suggestion:hover {
+    background: var(--app-accent-soft);
+    border-color: var(--app-accent);
+    color: var(--app-accent);
+  }
+
+  /* ── Input bar ──────────────────────────────────────────────────── */
+  .ki-input-bar {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    padding: 10px 0 4px;
+    border-top: 1px solid var(--app-border);
+  }
+  .ki-input {
+    flex: 1;
+    background: var(--app-surface);
+    border: 1.5px solid var(--app-border);
+    border-radius: 22px;
+    padding: 10px 18px;
+    font-size: .92rem;
+    color: var(--app-text);
+    resize: none;
+    outline: none;
+    transition: border-color .15s;
+    max-height: 120px;
+    line-height: 1.4;
+  }
+  .ki-input:focus { border-color: var(--app-accent); }
+  .ki-input::placeholder { color: var(--app-text-muted); }
+  [data-theme="obsidian"] .ki-input { background: rgba(255,255,255,.07); }
+
+  .ki-send {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--app-accent);
+    border: none;
+    color: #fff;
+    font-size: 1.1rem;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    flex-shrink: 0;
+  }
+  .ki-send:disabled { opacity: .4; }
+  .ki-send:not(:disabled):active { transform: scale(.92); }
+</style>
+
+<div class="ki-wrap">
+
+  <!-- History / chat area -->
+  <div class="ki-history" id="kiHistory">
+    <div class="ki-empty" id="kiEmpty">
+      <div class="ki-empty-icon">✨</div>
+      <p class="mb-1 fw-semibold">Frag deine Ablage</p>
+      <p class="small mb-2">Stelle Fragen zu deinen Dokumenten in natürlicher Sprache.</p>
+      <div class="ki-suggestions">
+        <button class="ki-suggestion" onclick="suggest(this)">Welche Versicherungen habe ich von Allianz?</button>
+        <button class="ki-suggestion" onclick="suggest(this)">Letzte Rechnung von SBB</button>
+        <button class="ki-suggestion" onclick="suggest(this)">Steuerrelevante Dokumente 2025</button>
+        <button class="ki-suggestion" onclick="suggest(this)">Wie viel habe ich 2025 für Strom bezahlt?</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input bar -->
+  <div class="ki-input-bar">
+    <textarea id="kiInput" class="ki-input" rows="1"
+              placeholder="Frage stellen …" autocomplete="off"></textarea>
+    <button id="kiSend" class="ki-send" disabled title="Fragen">➤</button>
+  </div>
+
+</div>
+
+<script>
+const TYPE_COLORS_HEX = {
+  invoice:'#dc3545', insurance:'#0d6efd', tax:'#ffc107',
+  medical_report:'#198754', bank_statement:'#0dcaf0', contract:'#6f42c1',
+  id_document:'#343a40', certificate:'#fd7e14', letter:'#6c757d',
+  quote:'#20c997', payslip:'#0a58ca', donation_receipt:'#d63384', other:'#adb5bd'
+};
+const TYPE_LABELS = {{ type_labels | tojson }};
+
+const history  = document.getElementById('kiHistory');
+const empty    = document.getElementById('kiEmpty');
+const input    = document.getElementById('kiInput');
+const sendBtn  = document.getElementById('kiSend');
+
+/* auto-grow textarea */
+input.addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  sendBtn.disabled = !this.value.trim();
+});
+input.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+});
+sendBtn.addEventListener('click', ask);
+
+function suggest(btn) {
+  input.value = btn.textContent.trim();
+  input.dispatchEvent(new Event('input'));
+  ask();
+}
+
+function ask() {
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  input.style.height = 'auto';
+  sendBtn.disabled = true;
+  empty.style.display = 'none';
+
+  /* question bubble */
+  const wrap = document.createElement('div');
+  wrap.className = 'ki-bubble-wrap';
+  wrap.innerHTML = `<div class="ki-bubble-question">${escHtml(q)}</div>`;
+  history.appendChild(wrap);
+
+  /* thinking dots */
+  const thinking = document.createElement('div');
+  thinking.className = 'ki-thinking';
+  thinking.innerHTML = '<span></span><span></span><span></span>';
+  history.appendChild(thinking);
+  scrollDown();
+
+  fetch('/api/nl-search', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({question: q}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    thinking.remove();
+    const answerWrap = document.createElement('div');
+    answerWrap.className = 'ki-bubble-wrap';
+
+    if (data.error) {
+      answerWrap.innerHTML = `<div class="ki-bubble-answer text-danger">Fehler: ${escHtml(data.error)}</div>`;
+    } else {
+      let html = `<div class="ki-bubble-answer">${escHtml(data.answer || '–')}</div>`;
+      answerWrap.innerHTML = html;
+
+      if (data.documents && data.documents.length) {
+        const docsEl = document.createElement('div');
+        docsEl.className = 'ki-bubble-docs';
+        data.documents.forEach(doc => {
+          const accent = TYPE_COLORS_HEX[doc.document_type] || '#adb5bd';
+          const label  = TYPE_LABELS[doc.document_type] || doc.document_type || '–';
+          const chip   = document.createElement('a');
+          chip.href    = '/document/' + doc.id;
+          chip.className = 'ki-doc-chip';
+          chip.innerHTML = `
+            <span class="swatch-dot flex-shrink-0" style="background:${accent};width:10px;height:10px;border-radius:50%;display:inline-block"></span>
+            <span class="chip-name">${escHtml(doc.new_filename || '–')}</span>
+            <span class="chip-meta">${escHtml(doc.document_date || '')}</span>`;
+          docsEl.appendChild(chip);
+        });
+        answerWrap.appendChild(docsEl);
+      }
+    }
+
+    history.appendChild(answerWrap);
+    scrollDown();
+    sendBtn.disabled = false;
+    input.focus();
+  })
+  .catch(err => {
+    thinking.remove();
+    const errWrap = document.createElement('div');
+    errWrap.className = 'ki-bubble-wrap';
+    errWrap.innerHTML = `<div class="ki-bubble-answer text-danger">Netzwerkfehler: ${escHtml(err.message)}</div>`;
+    history.appendChild(errWrap);
+    scrollDown();
+    sendBtn.disabled = false;
+  });
+}
+
+function scrollDown() {
+  history.scrollTo({top: history.scrollHeight, behavior: 'smooth'});
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}
