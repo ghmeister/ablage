@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}API-Kosten{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h4 mb-0">💰 OpenAI API-Kosten</h1>
+  <a href="/" class="btn btn-outline-secondary btn-sm">← Suche</a>
+</div>
+
+{# ── Summary cards ────────────────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold text-primary">${{ "%.4f"|format(summary.today_usd) }}</div>
+        <div class="text-muted small">Heute</div>
+      </div>
+    </div>
+  </div>
+  {% if summary.monthly_usd is defined %}
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold text-success">${{ "%.4f"|format(summary.monthly_usd) }}</div>
+        <div class="text-muted small">Dieser Monat</div>
+      </div>
+    </div>
+  </div>
+  {% elif monthly %}
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold text-success">${{ "%.4f"|format(monthly[0].total_usd) }}</div>
+        <div class="text-muted small">{{ monthly[0].month }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold">${{ "%.4f"|format(summary.total_usd) }}</div>
+        <div class="text-muted small">Gesamt</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card shadow-sm h-100 text-center">
+      <div class="card-body py-3">
+        <div class="fs-3 fw-bold text-secondary">{{ summary.days_tracked }}</div>
+        <div class="text-muted small">Tage erfasst</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Daily chart ──────────────────────────────────────────────────── #}
+{% if daily %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">Tageskosten (letzte {{ daily|length }} Tage)</div>
+  <div class="card-body">
+    <canvas id="dailyChart" style="max-height:220px"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+
+  {# ── Breakdown by purpose ───────────────────────────────────────── #}
+  {% if summary.by_purpose %}
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header fw-semibold">Nach Verwendung</div>
+      <ul class="list-group list-group-flush">
+        {% for p in summary.by_purpose %}
+        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+          <span class="small">{{ p.purpose }}</span>
+          <span class="small text-muted">${{ "%.4f"|format(p.total_usd) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Breakdown by model ─────────────────────────────────────────── #}
+  {% if summary.by_model %}
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header fw-semibold">Nach Modell</div>
+      <ul class="list-group list-group-flush">
+        {% for m in summary.by_model %}
+        <li class="list-group-item d-flex justify-content-between align-items-center py-2">
+          <span class="small font-monospace">{{ m.model }}</span>
+          <span class="small text-muted">${{ "%.4f"|format(m.total_usd) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Monthly table ────────────────────────────────────────────────── #}
+{% if monthly %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">Monatliche Übersicht</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Monat</th>
+          <th class="text-end">Kosten (USD)</th>
+          <th class="text-end">Dokumente</th>
+          <th class="text-end">Tokens</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in monthly %}
+        <tr>
+          <td class="small">{{ m.month }}</td>
+          <td class="small text-end">${{ "%.4f"|format(m.total_usd) }}</td>
+          <td class="small text-end">{{ m.doc_count }}</td>
+          <td class="small text-end">{{ "{:,}".format(m.total_tokens) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{# ── Per-document table ───────────────────────────────────────────── #}
+{% if per_document %}
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold">Kosten pro Dokument (teuerste zuerst)</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Dateiname</th>
+          <th>Typ</th>
+          <th>Verwendung</th>
+          <th class="text-end">Tokens</th>
+          <th class="text-end">Kosten (USD)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in per_document %}
+        <tr {% if d.document_id %}style="cursor:pointer" onclick="location.href='/document/{{ d.document_id }}'"{% endif %}>
+          <td class="small" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            {% if d.filename %}{{ d.filename }}{% else %}<span class="text-muted">unbekannt</span>{% endif %}
+          </td>
+          <td class="small">
+            {% if d.document_type %}
+            <span class="badge badge-type" style="background-color:{{ type_colors.get(d.document_type,'#6c757d') }}">
+              {{ type_labels.get(d.document_type, d.document_type) }}
+            </span>
+            {% endif %}
+          </td>
+          <td class="small text-muted">{{ d.purposes }}</td>
+          <td class="small text-end">{{ "{:,}".format(d.total_tokens) }}</td>
+          <td class="small text-end fw-semibold">${{ "%.4f"|format(d.total_usd) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if not daily and not monthly and not per_document %}
+<div class="text-center text-muted py-5">
+  <div class="fs-1">💸</div>
+  <p class="mt-2">Noch keine API-Kosten erfasst.<br>Verarbeite ein Dokument, um Daten zu sehen.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if daily %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script>
+(function () {
+  const daily = {{ daily | tojson }};
+  // Reverse so oldest is left
+  const labels = daily.map(d => d.day).reverse();
+  const values = daily.map(d => d.total_usd).reverse();
+
+  new Chart(document.getElementById('dailyChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'USD',
+        data: values,
+        backgroundColor: 'rgba(13,110,253,0.6)',
+        borderColor: 'rgba(13,110,253,1)',
+        borderWidth: 1,
+        borderRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => '$' + ctx.parsed.y.toFixed(4)
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: v => '$' + v.toFixed(4)
+          }
+        },
+        x: {
+          ticks: { font: { size: 11 } }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

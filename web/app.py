@@ -676,5 +676,19 @@ def api_costs():
     return jsonify(cost_tracker.get_summary())
 
 
+@app.route("/kosten")
+def kosten():
+    import cost_tracker
+    return render_template(
+        "kosten.html",
+        summary=cost_tracker.get_summary(),
+        daily=cost_tracker.get_daily_totals(60),
+        monthly=cost_tracker.get_monthly_totals(),
+        per_document=cost_tracker.get_per_document_costs(100),
+        type_labels=TYPE_LABELS,
+        type_colors=TYPE_COLORS,
+    )
+
+
 if __name__ == "__main__":
     app.run(debug=False, host="0.0.0.0", port=5000)

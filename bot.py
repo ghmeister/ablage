@@ -160,6 +160,9 @@ class AblageBot:
         print(f"Source path : {parent_path or '<unknown>'}")
         print(f"{'='*60}")
 
+        import cost_tracker
+        _cost_session = cost_tracker.begin_session()
+
         # Download + extract in-memory
         content = self.graph.download_file(item_id)
         pdf_info = self.pdf_extractor.get_pdf_info_from_bytes(content)
@@ -246,6 +249,7 @@ class AblageBot:
                 email_message_id="".join(email_context.get("message_id", "").split()).strip("<>") if email_context else None,
                 content_hash=content_hash,
             )
+            cost_tracker.tag_session(_cost_session, new_doc_id)
             print(f"Indexed   : {final_name}")
         except Exception as e:
             # File has already been moved to OneDrive — it is NOT indexed and will be invisible
@@ -307,6 +311,7 @@ class AblageBot:
             except Exception as e:
                 print(f"Warning   : Could not delete sidecar: {e}")
 
+        cost_tracker.clear_session()
         _write_status("idle")
 
     # ------------------------------------------------------------------
