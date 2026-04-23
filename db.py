@@ -610,6 +610,124 @@ def get_statistics() -> dict:
     }
 
 
+def get_archive_stats() -> dict:
+    """Comprehensive archive statistics for the /statistik page."""
+    with _conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+
+        oldest = conn.execute(
+            "SELECT MIN(document_date) FROM documents WHERE document_date IS NOT NULL"
+        ).fetchone()[0]
+        newest = conn.execute(
+            "SELECT MAX(document_date) FROM documents WHERE document_date IS NOT NULL"
+        ).fetchone()[0]
+
+        this_month = conn.execute(
+            "SELECT COUNT(*) FROM documents "
+            "WHERE substr(scan_timestamp,1,7) = strftime('%Y-%m','now')"
+        ).fetchone()[0]
+        last_month = conn.execute(
+            "SELECT COUNT(*) FROM documents "
+            "WHERE substr(scan_timestamp,1,7) = strftime('%Y-%m','now','-1 month')"
+        ).fetchone()[0]
+
+        unseen = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE seen = 0"
+        ).fetchone()[0]
+
+        tax_count = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE tax_relevant = 1"
+        ).fetchone()[0]
+
+        email_count = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE email_source = 1"
+        ).fetchone()[0]
+
+        # Duplicates
+        dup_groups = conn.execute(
+            "SELECT COUNT(*) FROM ("
+            "  SELECT content_hash FROM documents WHERE content_hash IS NOT NULL"
+            "  GROUP BY content_hash HAVING COUNT(*) > 1"
+            ")"
+        ).fetchone()[0]
+        dup_docs = conn.execute(
+            "SELECT COUNT(*) FROM documents WHERE content_hash IN ("
+            "  SELECT content_hash FROM documents WHERE content_hash IS NOT NULL"
+            "  GROUP BY content_hash HAVING COUNT(*) > 1"
+            ")"
+        ).fetchone()[0]
+
+        # By type (all)
+        by_type = [
+            {"type": r[0], "count": r[1]}
+            for r in conn.execute(
+                "SELECT document_type, COUNT(*) AS cnt FROM documents"
+                " WHERE document_type IS NOT NULL"
+                " GROUP BY document_type ORDER BY cnt DESC"
+            ).fetchall()
+        ]
+
+        # By year (from document_date)
+        by_year = [
+            {"year": r[0], "count": r[1]}
+            for r in conn.execute(
+                "SELECT substr(document_date,1,4) AS yr, COUNT(*) AS cnt"
+                " FROM documents WHERE document_date IS NOT NULL AND yr != ''"
+                " GROUP BY yr ORDER BY yr ASC"
+            ).fetchall()
+        ]
+
+        # Documents added per month (scan_timestamp, last 24 months)
+        by_scan_month = [
+            {"month": r[0], "count": r[1]}
+            for r in conn.execute(
+                "SELECT substr(scan_timestamp,1,7) AS mo, COUNT(*) AS cnt"
+                " FROM documents"
+                " WHERE mo >= strftime('%Y-%m','now','-23 months')"
+                " GROUP BY mo ORDER BY mo ASC"
+            ).fetchall()
+        ]
+
+        # Top senders (company preferred, fall back to sender)
+        top_senders = [
+            {"name": r[0], "count": r[1]}
+            for r in conn.execute(
+                "SELECT COALESCE(NULLIF(company,''), NULLIF(sender,''), '(unbekannt)') AS name,"
+                "       COUNT(*) AS cnt"
+                " FROM documents"
+                " GROUP BY name ORDER BY cnt DESC LIMIT 10"
+            ).fetchall()
+        ]
+
+        # OCR usage: docs whose session_id has an 'ocr' purpose in api_costs
+        ocr_count = 0
+        try:
+            ocr_count = conn.execute(
+                "SELECT COUNT(DISTINCT document_id) FROM api_costs"
+                " WHERE purpose = 'ocr' AND document_id IS NOT NULL"
+            ).fetchone()[0]
+        except Exception:
+            pass
+
+    return {
+        "total":         total,
+        "oldest":        oldest,
+        "newest":        newest,
+        "this_month":    this_month,
+        "last_month":    last_month,
+        "unseen":        unseen,
+        "tax_relevant":  tax_count,
+        "email_source":  email_count,
+        "dup_groups":    dup_groups,
+        "dup_docs":      dup_docs,
+        "ocr_count":     ocr_count,
+        "by_type":       by_type,
+        "by_year":       by_year,
+        "by_scan_month": by_scan_month,
+        "top_senders":   top_senders,
+    }
+
+
 def _sanitize_fts_query(query: str) -> str:
     """Convert a user search string into a safe FTS5 MATCH expression."""
     for ch in ('"', "'", '(', ')', '-', '+', '^', '*', ':', '.', ','):

@@ -676,6 +676,16 @@ def api_costs():
     return jsonify(cost_tracker.get_summary())
 
 
+@app.route("/statistik")
+def statistik():
+    return render_template(
+        "statistik.html",
+        stats=db_module.get_archive_stats(),
+        type_labels=TYPE_LABELS,
+        type_colors=TYPE_COLORS,
+    )
+
+
 @app.route("/kosten")
 def kosten():
     import cost_tracker
