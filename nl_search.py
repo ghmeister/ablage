@@ -18,7 +18,11 @@ _INTENT_SYSTEM = (
     ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
     ' "sort": "date_desc" | "date_asc" | "relevance",\n'
     ' "limit": <1-20, default 10>}}\n'
-    "Set is_document_query=false for greetings, small talk, or anything unrelated to documents. "
+    "IMPORTANT: is_document_query must be TRUE for virtually every question — "
+    "including questions in German, questions about amounts/costs/dates, "
+    "questions about specific companies or senders, and any question that could "
+    "relate to invoices, insurance, tax, contracts, or other documents. "
+    "Only set is_document_query=false for pure greetings with no document intent (e.g. 'Hello', 'How are you'). "
     "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
     "Use sort=date_asc for oldest. "
     "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X). "
