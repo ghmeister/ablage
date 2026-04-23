@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="classic">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,22 +13,120 @@
         href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
         crossorigin="anonymous">
   <style>
-    body { background-color: #f8f9fa; }
-    .table-hover tbody tr { cursor: pointer; }
-    .table-hover tbody tr:hover td { background-color: #e9ecef; }
-    pre.extracted-text {
-      white-space: pre-wrap;
-      word-break: break-word;
-      max-height: 420px;
-      overflow-y: auto;
-      font-size: 0.8rem;
+    /* ── Theme variables ────────────────────────────────────────────── */
+    :root {
+      --app-bg:             #f8f9fa;
+      --app-surface:        #ffffff;
+      --app-surface-2:      #f1f3f5;
+      --app-border:         #dee2e6;
+      --app-text:           #212529;
+      --app-text-muted:     #6c757d;
+      --app-accent:         #0d6efd;
+      --app-accent-soft:    rgba(13,110,253,.12);
+      --app-nav-bg:         #212529;
+      --app-nav-text:       rgba(255,255,255,.9);
+      --app-card-radius:    8px;
+      --app-card-shadow:    0 1px 3px rgba(0,0,0,.08);
+      --app-blur:           none;
+      --app-tab-bar-bg:     #ffffff;
+      --app-tab-active:     #0d6efd;
+      --app-tab-inactive:   #adb5bd;
+      --doc-card-border:    #dee2e6;
+      --doc-card-hover:     #f1f3f5;
     }
-    .badge-type { font-size: 0.72rem; }
-    .filename-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }
 
-    /* Mobile card list */
-    .doc-card { border-left: 4px solid #dee2e6; transition: background .15s; }
-    .doc-card:active { background-color: #e9ecef; }
+    /* ── Obsidian: OLED black, glass, indigo/violet ─────────────────── */
+    [data-theme="obsidian"] {
+      --app-bg:             #000000;
+      --app-surface:        rgba(255,255,255,.065);
+      --app-surface-2:      rgba(255,255,255,.04);
+      --app-border:         rgba(255,255,255,.09);
+      --app-text:           #e8e8f0;
+      --app-text-muted:     rgba(255,255,255,.42);
+      --app-accent:         #818cf8;
+      --app-accent-soft:    rgba(129,140,248,.18);
+      --app-nav-bg:         rgba(8,8,12,.88);
+      --app-nav-text:       rgba(255,255,255,.9);
+      --app-card-radius:    18px;
+      --app-card-shadow:    0 4px 24px rgba(0,0,0,.5);
+      --app-blur:           blur(22px) saturate(180%);
+      --app-tab-bar-bg:     rgba(12,12,18,.92);
+      --app-tab-active:     #818cf8;
+      --app-tab-inactive:   rgba(255,255,255,.3);
+      --doc-card-border:    rgba(255,255,255,.08);
+      --doc-card-hover:     rgba(255,255,255,.10);
+      color-scheme: dark;
+    }
+
+    /* ── Sakura: warm cream, coral, soft pink ───────────────────────── */
+    [data-theme="sakura"] {
+      --app-bg:             #fdf4ef;
+      --app-surface:        #ffffff;
+      --app-surface-2:      #fef0ea;
+      --app-border:         rgba(215,110,80,.15);
+      --app-text:           #2d1810;
+      --app-text-muted:     #a07060;
+      --app-accent:         #e8604c;
+      --app-accent-soft:    rgba(232,96,76,.12);
+      --app-nav-bg:         #2d1810;
+      --app-nav-text:       rgba(255,255,255,.92);
+      --app-card-radius:    20px;
+      --app-card-shadow:    0 2px 16px rgba(180,80,50,.10);
+      --app-blur:           none;
+      --app-tab-bar-bg:     #ffffff;
+      --app-tab-active:     #e8604c;
+      --app-tab-inactive:   #c0a090;
+      --doc-card-border:    rgba(215,110,80,.2);
+      --doc-card-hover:     #fef0ea;
+    }
+
+    /* ── Base styles ────────────────────────────────────────────────── */
+    body {
+      background-color: var(--app-bg);
+      color: var(--app-text);
+      transition: background-color .3s, color .3s;
+    }
+    a { color: var(--app-accent); }
+
+    /* ── Navbar ─────────────────────────────────────────────────────── */
+    .app-navbar {
+      background: var(--app-nav-bg) !important;
+      -webkit-backdrop-filter: var(--app-blur);
+      backdrop-filter: var(--app-blur);
+      border-bottom: 1px solid var(--app-border);
+      position: sticky;
+      top: 0;
+      z-index: 1030;
+    }
+    .app-navbar .navbar-brand { color: var(--app-nav-text) !important; }
+    .app-navbar .text-secondary { color: var(--app-text-muted) !important; }
+
+    /* ── Cards ──────────────────────────────────────────────────────── */
+    .card {
+      background: var(--app-surface);
+      border-color: var(--app-border);
+      border-radius: var(--app-card-radius) !important;
+      box-shadow: var(--app-card-shadow);
+      color: var(--app-text);
+    }
+    .card-header {
+      background: var(--app-surface-2);
+      border-color: var(--app-border);
+      color: var(--app-text-muted);
+    }
+    [data-theme="obsidian"] .card,
+    [data-theme="obsidian"] .card-header {
+      -webkit-backdrop-filter: var(--app-blur);
+      backdrop-filter: var(--app-blur);
+    }
+
+    /* ── Doc cards (mobile list) ────────────────────────────────────── */
+    .doc-card {
+      border-left: 4px solid var(--doc-card-border);
+      transition: background .15s, transform .1s;
+      border-radius: var(--app-card-radius) !important;
+    }
+    .doc-card:active { background: var(--doc-card-hover) !important; transform: scale(.99); }
     .doc-card .doc-filename {
       display: block;
       font-weight: 600;
@@ -36,21 +134,168 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      color: var(--app-text);
+    }
+    [data-theme="obsidian"] .doc-card,
+    [data-theme="sakura"]   .doc-card {
+      border-left-width: 3px;
     }
 
-    /* Larger tap targets for edit buttons on touch devices */
+    /* ── Tables ─────────────────────────────────────────────────────── */
+    .table { color: var(--app-text); }
+    .table-hover tbody tr { cursor: pointer; }
+    .table-hover tbody tr:hover td { background-color: var(--doc-card-hover); }
+    [data-theme="obsidian"] .table-dark th,
+    [data-theme="obsidian"] .thead-dark th { background: rgba(40,40,60,.9); }
+
+    /* ── Form controls ──────────────────────────────────────────────── */
+    [data-theme="obsidian"] .form-control,
+    [data-theme="obsidian"] .form-select,
+    [data-theme="obsidian"] .input-group-text {
+      background-color: rgba(255,255,255,.08);
+      border-color: var(--app-border);
+      color: var(--app-text);
+    }
+    [data-theme="obsidian"] .form-control::placeholder { color: var(--app-text-muted); }
+    [data-theme="sakura"] .form-control,
+    [data-theme="sakura"] .form-select {
+      border-color: var(--app-border);
+    }
+
+    /* ── Dropdown ───────────────────────────────────────────────────── */
+    [data-theme="obsidian"] .dropdown-menu {
+      background: rgba(20,20,30,.96);
+      border-color: var(--app-border);
+      -webkit-backdrop-filter: blur(24px);
+      backdrop-filter: blur(24px);
+    }
+    [data-theme="obsidian"] .dropdown-item { color: var(--app-text); }
+    [data-theme="obsidian"] .dropdown-item:hover { background: var(--app-accent-soft); }
+    [data-theme="obsidian"] .dropdown-divider { border-color: var(--app-border); }
+
+    /* ── Alert / banner ─────────────────────────────────────────────── */
+    [data-theme="obsidian"] .alert-warning {
+      background: rgba(255,193,7,.12);
+      border-color: rgba(255,193,7,.25);
+      color: #ffd060;
+    }
+
+    /* ── Misc ───────────────────────────────────────────────────────── */
+    pre.extracted-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 420px;
+      overflow-y: auto;
+      font-size: 0.8rem;
+      background: var(--app-surface-2);
+      color: var(--app-text);
+    }
+    .badge-type { font-size: 0.72rem; }
+    .filename-cell { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }
     @media (max-width: 767.98px) {
       .btn-edit-inline { padding: 0.35rem 0.6rem; font-size: 0.85rem; }
     }
-
-    /* Hide PDF button in portrait mode to save space */
     @media (orientation: portrait) and (max-width: 767.98px) {
       .pdf-btn-portrait-hidden { display: none !important; }
     }
+
+    /* ── Bottom tab bar (mobile, non-classic) ───────────────────────── */
+    .app-tab-bar {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 60px;
+      background: var(--app-tab-bar-bg);
+      border-top: 1px solid var(--app-border);
+      -webkit-backdrop-filter: var(--app-blur);
+      backdrop-filter: var(--app-blur);
+      z-index: 1040;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    [data-theme="obsidian"] .app-tab-bar,
+    [data-theme="sakura"]   .app-tab-bar {
+      display: flex;
+      align-items: stretch;
+    }
+    .tab-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      text-decoration: none;
+      color: var(--app-tab-inactive);
+      font-size: .65rem;
+      font-weight: 500;
+      transition: color .15s;
+      border: none;
+      background: none;
+      cursor: pointer;
+      padding: 6px 0 4px;
+    }
+    .tab-item .tab-icon { font-size: 1.3rem; line-height: 1; }
+    .tab-item.active, .tab-item:hover { color: var(--app-tab-active); }
+    .tab-item.active .tab-icon { filter: drop-shadow(0 0 6px var(--app-tab-active)); }
+
+    /* Push content up so it doesn't hide behind tab bar on mobile */
+    @media (max-width: 767.98px) {
+      [data-theme="obsidian"] .main-content,
+      [data-theme="sakura"]   .main-content { padding-bottom: 80px; }
+    }
+
+    /* ── Obsidian accent pill on active nav item ────────────────────── */
+    [data-theme="obsidian"] .navbar-toggler,
+    [data-theme="sakura"]   .navbar-toggler {
+      border-color: var(--app-border);
+    }
+
+    /* ── Theme picker modal ─────────────────────────────────────────── */
+    [data-theme="obsidian"] .modal-content {
+      background: rgba(16,16,24,.97);
+      border-color: var(--app-border);
+      -webkit-backdrop-filter: blur(30px);
+      backdrop-filter: blur(30px);
+      color: var(--app-text);
+    }
+    [data-theme="obsidian"] .modal-header,
+    [data-theme="obsidian"] .list-group-item {
+      background: transparent;
+      border-color: var(--app-border);
+      color: var(--app-text);
+    }
+    [data-theme="sakura"] .modal-content { color: var(--app-text); }
+
+    .theme-swatch {
+      width: 100%;
+      border-radius: 16px;
+      padding: 16px 14px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: border-color .2s, transform .15s;
+    }
+    .theme-swatch:hover  { transform: translateY(-2px); }
+    .theme-swatch.active { border-color: var(--app-accent) !important; }
+    .theme-swatch-classic  { background: linear-gradient(135deg,#f8f9fa,#dee2e6); }
+    .theme-swatch-obsidian { background: linear-gradient(135deg,#000,#1a1025); }
+    .theme-swatch-sakura   { background: linear-gradient(135deg,#fdf4ef,#fde0d5); }
+    .swatch-dot {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 4px;
+    }
   </style>
+  <!-- Apply theme before paint to avoid flash -->
+  <script>
+    (function(){
+      var t = localStorage.getItem('ablage-theme') || 'classic';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
-<nav class="navbar navbar-dark bg-dark mb-4 shadow-sm">
+<nav class="navbar app-navbar mb-4 shadow-sm">
   <div class="container-fluid">
     <a class="navbar-brand fw-semibold" href="/">📄 Meisters Ablage</a>
     <span class="text-secondary small d-none d-md-inline">v{{ app_version }}{% if git_commit %} ({{ git_commit }}){% endif %}</span>
@@ -75,6 +320,12 @@
           <li><a class="dropdown-item" href="/kosten">💰 Kosten</a></li>
           <li><a class="dropdown-item" href="/logs">📋 Log</a></li>
           <li><hr class="dropdown-divider"></li>
+          <li>
+            <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#themeModal">
+              🎨 Design wählen
+            </button>
+          </li>
+          <li><hr class="dropdown-divider"></li>
           <li><a class="dropdown-item text-danger" href="/logout">Abmelden</a></li>
         </ul>
       </div>
@@ -82,7 +333,7 @@
   </div>
 </nav>
 
-<!-- Cost breakdown modal -->
+<!-- ── Cost breakdown modal ───────────────────────────────────────────── -->
 <div class="modal fade" id="costModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -96,67 +347,174 @@
     </div>
   </div>
 </div>
-<div class="container-lg pb-5">
+
+<!-- ── Theme picker modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="themeModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h6 class="modal-title fw-bold">🎨 Design wählen</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-3">
+        <div class="d-flex flex-column gap-3">
+
+          <div class="theme-swatch theme-swatch-classic" data-theme-pick="classic">
+            <div class="fw-semibold mb-1" style="color:#212529">☀️ Classic</div>
+            <div style="font-size:.75rem;color:#6c757d">Hell, sauber, Bootstrap</div>
+            <div class="mt-2 d-flex gap-1">
+              <span class="swatch-dot" style="background:#0d6efd"></span>
+              <span class="swatch-dot" style="background:#212529"></span>
+              <span class="swatch-dot" style="background:#f8f9fa;border:1px solid #dee2e6"></span>
+            </div>
+          </div>
+
+          <div class="theme-swatch theme-swatch-obsidian" data-theme-pick="obsidian">
+            <div class="fw-semibold mb-1" style="color:#e8e8f0">🌑 Obsidian</div>
+            <div style="font-size:.75rem;color:rgba(255,255,255,.45)">OLED dunkel, Glass, Indigo</div>
+            <div class="mt-2 d-flex gap-1">
+              <span class="swatch-dot" style="background:#818cf8"></span>
+              <span class="swatch-dot" style="background:#a78bfa"></span>
+              <span class="swatch-dot" style="background:#1a1025;border:1px solid rgba(255,255,255,.15)"></span>
+            </div>
+          </div>
+
+          <div class="theme-swatch theme-swatch-sakura" data-theme-pick="sakura">
+            <div class="fw-semibold mb-1" style="color:#2d1810">🌸 Sakura</div>
+            <div style="font-size:.75rem;color:#a07060">Warm, Koralle, Sanft</div>
+            <div class="mt-2 d-flex gap-1">
+              <span class="swatch-dot" style="background:#e8604c"></span>
+              <span class="swatch-dot" style="background:#f093ae"></span>
+              <span class="swatch-dot" style="background:#fdf4ef;border:1px solid rgba(215,110,80,.2)"></span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main content ───────────────────────────────────────────────────── -->
+<div class="container-lg pb-5 main-content">
   {% block content %}{% endblock %}
 </div>
+
+<!-- ── Mobile bottom tab bar (obsidian + sakura only) ────────────────── -->
+<nav class="app-tab-bar d-md-none">
+  <a href="/" class="tab-item {% if request.path == '/' %}active{% endif %}">
+    <span class="tab-icon">🏠</span>
+    <span>Suche</span>
+  </a>
+  <a href="#nlInput" class="tab-item" id="tabAI" onclick="focusNL(event)">
+    <span class="tab-icon">✨</span>
+    <span>KI</span>
+  </a>
+  <a href="/statistik" class="tab-item {% if request.path == '/statistik' %}active{% endif %}">
+    <span class="tab-icon">📊</span>
+    <span>Statistik</span>
+  </a>
+  <button class="tab-item" data-bs-toggle="modal" data-bs-target="#moreSheet">
+    <span class="tab-icon">☰</span>
+    <span>Mehr</span>
+  </button>
+</nav>
+
+<!-- ── "Mehr" bottom sheet (mobile) ──────────────────────────────────── -->
+<div class="modal fade" id="moreSheet" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable" style="margin:0;position:fixed;bottom:0;left:0;right:0;max-width:100%">
+    <div class="modal-content rounded-top-4 rounded-bottom-0 border-0">
+      <div class="modal-body py-4 px-4">
+        <div class="d-flex justify-content-center mb-3">
+          <div style="width:36px;height:4px;border-radius:2px;background:var(--app-border)"></div>
+        </div>
+        <div class="d-flex flex-column gap-2">
+          <a href="/steuern"    class="btn btn-outline-secondary text-start">🧾 Steuern</a>
+          <a href="/duplicates" class="btn btn-outline-secondary text-start">🔁 Duplikate</a>
+          <a href="/kosten"     class="btn btn-outline-secondary text-start">💰 Kosten</a>
+          <a href="/logs"       class="btn btn-outline-secondary text-start">📋 Log</a>
+          <button class="btn btn-outline-secondary text-start"
+                  data-bs-dismiss="modal"
+                  onclick="setTimeout(()=>new bootstrap.Modal(document.getElementById('themeModal')).show(),200)">
+            🎨 Design wählen
+          </button>
+          <hr class="my-1">
+          <a href="/logout" class="btn btn-outline-danger text-start">Abmelden</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
         crossorigin="anonymous"></script>
 <script>
+/* ── Theme switcher ───────────────────────────────────────────────────── */
 (function () {
-  function fmt(usd) {
-    if (usd < 0.01) return (usd * 100).toFixed(2) + ' ¢';
-    return '$' + usd.toFixed(4);
-  }
-  function fmtFull(usd) {
-    return '$' + usd.toFixed(4);
-  }
-
-  fetch('/api/costs')
-    .then(r => r.ok ? r.json() : null)
-    .catch(() => null)
-    .then(data => {
-      if (!data) return;
-      const badge = document.getElementById('costBadge');
-      if (badge) {
-        badge.textContent = '💰 Heute: ' + fmt(data.today_usd) + ' · Total: ' + fmtFull(data.total_usd);
-        // only show on desktop (≥768 px)
-        if (window.innerWidth >= 768) badge.classList.remove('d-none');
-      }
-      const body = document.getElementById('costModalBody');
-      if (!body) return;
-      let html = `
-        <div class="row text-center mb-3">
-          <div class="col-6">
-            <div class="fs-4 fw-bold text-primary">${fmtFull(data.today_usd)}</div>
-            <div class="text-muted small">Heute</div>
-          </div>
-          <div class="col-6">
-            <div class="fs-4 fw-bold">${fmtFull(data.total_usd)}</div>
-            <div class="text-muted small">Gesamt (${data.days_tracked} Tage)</div>
-          </div>
-        </div>`;
-      if (data.by_purpose && data.by_purpose.length) {
-        html += '<h6 class="mt-3 mb-2 text-muted small text-uppercase">Nach Verwendung</h6><ul class="list-group list-group-flush mb-3">';
-        for (const p of data.by_purpose) {
-          html += `<li class="list-group-item d-flex justify-content-between px-0 py-1">
-            <span class="small">${p.purpose}</span>
-            <span class="small text-muted">${fmtFull(p.total_usd)}</span>
-          </li>`;
-        }
-        html += '</ul>';
-      }
-      if (data.by_model && data.by_model.length) {
-        html += '<h6 class="mb-2 text-muted small text-uppercase">Nach Modell</h6><ul class="list-group list-group-flush">';
-        for (const m of data.by_model) {
-          html += `<li class="list-group-item d-flex justify-content-between px-0 py-1">
-            <span class="small font-monospace">${m.model}</span>
-            <span class="small text-muted">${fmtFull(m.total_usd)}</span>
-          </li>`;
-        }
-        html += '</ul>';
-      }
-      body.innerHTML = html;
+  var current = localStorage.getItem('ablage-theme') || 'classic';
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('ablage-theme', t);
+    current = t;
+    document.querySelectorAll('.theme-swatch').forEach(function(el) {
+      el.classList.toggle('active', el.dataset.themePick === t);
     });
+  }
+  applyTheme(current);
+  document.querySelectorAll('[data-theme-pick]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      applyTheme(el.dataset.themePick);
+      setTimeout(function() {
+        var m = bootstrap.Modal.getInstance(document.getElementById('themeModal'));
+        if (m) m.hide();
+      }, 300);
+    });
+  });
+  document.getElementById('themeModal').addEventListener('show.bs.modal', function() {
+    applyTheme(current);
+  });
+})();
+
+/* ── NL tab: focus search if on home page, else navigate ─────────────── */
+function focusNL(e) {
+  var inp = document.getElementById('nlInput');
+  if (inp) {
+    e.preventDefault();
+    inp.focus();
+    inp.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+}
+
+/* ── Cost badge ───────────────────────────────────────────────────────── */
+(function () {
+  function fmt(usd)     { return usd < 0.01 ? (usd*100).toFixed(2)+' ¢' : '$'+usd.toFixed(4); }
+  function fmtFull(usd) { return '$'+usd.toFixed(4); }
+
+  fetch('/api/costs').then(r => r.ok ? r.json() : null).catch(() => null).then(data => {
+    if (!data) return;
+    var badge = document.getElementById('costBadge');
+    if (badge) {
+      badge.textContent = '💰 Heute: ' + fmt(data.today_usd) + ' · Total: ' + fmtFull(data.total_usd);
+      if (window.innerWidth >= 768) badge.classList.remove('d-none');
+    }
+    var body = document.getElementById('costModalBody');
+    if (!body) return;
+    var html = '<div class="row text-center mb-3">'
+      + '<div class="col-6"><div class="fs-4 fw-bold text-primary">'+fmtFull(data.today_usd)+'</div><div class="text-muted small">Heute</div></div>'
+      + '<div class="col-6"><div class="fs-4 fw-bold">'+fmtFull(data.total_usd)+'</div><div class="text-muted small">Gesamt ('+data.days_tracked+' Tage)</div></div>'
+      + '</div>';
+    if (data.by_purpose && data.by_purpose.length) {
+      html += '<h6 class="mt-3 mb-2 text-muted small text-uppercase">Nach Verwendung</h6><ul class="list-group list-group-flush mb-3">';
+      data.by_purpose.forEach(p => { html += '<li class="list-group-item d-flex justify-content-between px-0 py-1"><span class="small">'+p.purpose+'</span><span class="small text-muted">'+fmtFull(p.total_usd)+'</span></li>'; });
+      html += '</ul>';
+    }
+    if (data.by_model && data.by_model.length) {
+      html += '<h6 class="mb-2 text-muted small text-uppercase">Nach Modell</h6><ul class="list-group list-group-flush">';
+      data.by_model.forEach(m => { html += '<li class="list-group-item d-flex justify-content-between px-0 py-1"><span class="small font-monospace">'+m.model+'</span><span class="small text-muted">'+fmtFull(m.total_usd)+'</span></li>'; });
+      html += '</ul>';
+    }
+    body.innerHTML = html;
+  });
 })();
 </script>
 {% block scripts %}{% endblock %}

@@ -214,11 +214,18 @@
 </div>
 
 {# Mobile: card list #}
+{%- set TYPE_HEX = {
+  'invoice':'#dc3545','insurance':'#0d6efd','tax':'#ffc107',
+  'medical_report':'#198754','bank_statement':'#0dcaf0','contract':'#6f42c1',
+  'id_document':'#343a40','certificate':'#fd7e14','letter':'#6c757d',
+  'quote':'#20c997','payslip':'#0a58ca','donation_receipt':'#d63384','other':'#adb5bd'
+} -%}
 <div class="d-md-none d-flex flex-column gap-2">
   {% for row in rows %}
-  <div class="card doc-card shadow-sm">
+  {%- set accent = TYPE_HEX.get(row.document_type, '#adb5bd') -%}
+  <div class="card doc-card shadow-sm" style="border-left-color:{{ accent }}">
     <div class="card-body py-2 px-3">
-      <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none text-dark d-block">
+      <a href="/document/{{ row.id }}{{ search_qs|e }}" class="text-decoration-none d-block">
         <span class="doc-filename {% if not row.seen %}fw-bold{% endif %}">{{ row.new_filename }}</span>
         {% if not row.seen %}<span class="badge bg-primary ms-1" style="font-size:0.65rem">Neu</span>{% endif %}
       </a>
@@ -226,10 +233,10 @@
         <span class="badge badge-type bg-{{ row.document_type | type_color }} flex-shrink-0">
           {{ row.document_type | type_label }}
         </span>{% if row.tax_relevant %}<span title="Steuerrelevant" style="color:#ffc107;font-size:0.75rem" class="flex-shrink-0">★</span>{% endif %}{% if row.email_source %}<span title="Per E-Mail erhalten" style="font-size:0.75rem" class="flex-shrink-0">✉</span>{% endif %}
-        <span class="small text-muted text-truncate flex-grow-1 min-w-0">{{ row.sender or row.company or '–' }}</span>
-        <span class="small text-muted flex-shrink-0">{{ row.document_date or '–' }}</span>
+        <span class="small text-truncate flex-grow-1 min-w-0" style="color:var(--app-text-muted)">{{ row.sender or row.company or '–' }}</span>
+        <span class="small flex-shrink-0" style="color:var(--app-text-muted)">{{ row.document_date or '–' }}</span>
         {% if archive_configured %}
-        <a href="/pdf/{{ row.id }}" target="_blank" target="_blank"
+        <a href="/pdf/{{ row.id }}" target="_blank"
            class="btn btn-outline-secondary btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden" title="PDF öffnen">&#128196;</a>
         {% endif %}
       </div>
