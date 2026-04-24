@@ -14,6 +14,9 @@
       {{ total }} Dokument{% if total != 1 %}e{% endif %}
       {% if unseen_count %}<span class="badge bg-primary ms-1">{{ unseen_count }} neu</span>{% endif %}
     </span>
+    {% if download_enabled %}
+    <button id="bulkDownloadBtn" class="btn btn-outline-success btn-sm d-none">⬇ Herunterladen (<span id="selCountDl">0</span>)</button>
+    {% endif %}
     {% if graph_enabled %}
     <button id="bulkSeenBtn" class="btn btn-outline-primary btn-sm d-none">✓ Gelesen (<span id="selCountSeen">0</span>)</button>
     <button id="bulkTaxBtn" class="btn btn-outline-warning btn-sm d-none">★ Steuerrelevant (<span id="selCountTax">0</span>)</button>
@@ -145,7 +148,7 @@
     {%- endmacro %}
     <thead class="table-dark">
       <tr>
-        {% if graph_enabled %}<th style="width:32px"><input type="checkbox" id="selectAll" class="form-check-input mt-0"></th>{% endif %}
+        {% if graph_enabled or download_enabled %}<th style="width:32px"><input type="checkbox" id="selectAll" class="form-check-input mt-0"></th>{% endif %}
         {{ sort_th("Datum",     "document_date",      "100px") }}
         {{ sort_th("Dateiname", "new_filename") }}
         {{ sort_th("Typ",       "document_type",      "110px") }}
@@ -159,7 +162,7 @@
     <tbody>
       {% for row in rows %}
       <tr onclick="window.location='/document/{{ row.id }}{{ search_qs|e }}'">
-        {% if graph_enabled %}
+        {% if graph_enabled or download_enabled %}
         <td onclick="event.stopPropagation()">
           <input type="checkbox" class="form-check-input mt-0 row-check" value="{{ row.id }}">
         </td>
@@ -301,25 +304,29 @@
 })();
 </script>
 
-{% if graph_enabled and rows %}
+{% if (download_enabled or graph_enabled) and rows %}
 <script>
-const selectAll     = document.getElementById('selectAll');
-const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
-const bulkTaxBtn    = document.getElementById('bulkTaxBtn');
-const bulkSeenBtn   = document.getElementById('bulkSeenBtn');
-const selCountEl    = document.getElementById('selCount');
-const selCountTaxEl = document.getElementById('selCountTax');
-const selCountSeenEl = document.getElementById('selCountSeen');
+const selectAll        = document.getElementById('selectAll');
+const bulkDeleteBtn    = document.getElementById('bulkDeleteBtn');
+const bulkTaxBtn       = document.getElementById('bulkTaxBtn');
+const bulkSeenBtn      = document.getElementById('bulkSeenBtn');
+const bulkDownloadBtn  = document.getElementById('bulkDownloadBtn');
+const selCountEl       = document.getElementById('selCount');
+const selCountTaxEl    = document.getElementById('selCountTax');
+const selCountSeenEl   = document.getElementById('selCountSeen');
+const selCountDlEl     = document.getElementById('selCountDl');
 
 function updateBulkBtns() {
   const checked = document.querySelectorAll('.row-check:checked');
   const n = checked.length;
-  selCountEl.textContent = n;
-  selCountTaxEl.textContent = n;
-  selCountSeenEl.textContent = n;
-  bulkDeleteBtn.classList.toggle('d-none', n === 0);
-  bulkTaxBtn.classList.toggle('d-none', n === 0);
-  bulkSeenBtn.classList.toggle('d-none', n === 0);
+  if (selCountEl)    selCountEl.textContent    = n;
+  if (selCountTaxEl) selCountTaxEl.textContent = n;
+  if (selCountSeenEl) selCountSeenEl.textContent = n;
+  if (selCountDlEl)  selCountDlEl.textContent  = n;
+  if (bulkDeleteBtn)   bulkDeleteBtn.classList.toggle('d-none', n === 0);
+  if (bulkTaxBtn)      bulkTaxBtn.classList.toggle('d-none', n === 0);
+  if (bulkSeenBtn)     bulkSeenBtn.classList.toggle('d-none', n === 0);
+  if (bulkDownloadBtn) bulkDownloadBtn.classList.toggle('d-none', n === 0);
 }
 
 selectAll && selectAll.addEventListener('change', () => {
@@ -374,6 +381,39 @@ bulkTaxBtn && bulkTaxBtn.addEventListener('click', async () => {
     alert('Fehler: ' + e.message);
     bulkTaxBtn.disabled = false;
     bulkTaxBtn.innerHTML = '★ Steuerrelevant (<span id="selCountTax">' + ids.length + '</span>)';
+  }
+});
+
+bulkDownloadBtn && bulkDownloadBtn.addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('.row-check:checked')].map(cb => parseInt(cb.value));
+  if (!ids.length) return;
+  const origHTML = bulkDownloadBtn.innerHTML;
+  bulkDownloadBtn.disabled = true;
+  bulkDownloadBtn.textContent = '…';
+  try {
+    const resp = await fetch('/api/documents/bulk-download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ids}),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || resp.statusText);
+    }
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `Ablage_${new Date().toISOString().slice(0,10)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('Download-Fehler: ' + e.message);
+  } finally {
+    bulkDownloadBtn.disabled = false;
+    bulkDownloadBtn.innerHTML = origHTML;
   }
 });
 

@@ -270,6 +270,7 @@ def index() -> str:
         sort_order=sort_order,
         archive_configured=_ARCHIVE_ROOT is not None,
         graph_enabled=bool(_get_graph()),
+        download_enabled=_ARCHIVE_ROOT is not None or bool(_get_graph()),
         unseen_count=db_module.get_unseen_count(),
     )
 
@@ -611,6 +612,78 @@ def bulk_seen():
     for doc_id in ids:
         db_module.update_document(doc_id, seen=1)
     return jsonify({"updated": ids})
+
+
+@app.route("/api/documents/bulk-download", methods=["POST"])
+def bulk_download():
+    """Stream selected documents as a ZIP archive."""
+    import io
+    import zipfile
+    from datetime import date
+
+    data = request.get_json() or {}
+    ids = [int(i) for i in (data.get("ids") or []) if str(i).isdigit()]
+    if not ids:
+        return jsonify({"error": "ids required"}), 400
+
+    graph = _get_graph()
+    buf = io.BytesIO()
+    added = 0
+    errors = []
+    seen_names: dict[str, int] = {}
+
+    def _unique(name: str) -> str:
+        if name not in seen_names:
+            seen_names[name] = 0
+            return name
+        seen_names[name] += 1
+        stem = name[:-4] if name.lower().endswith(".pdf") else name
+        return f"{stem}_{seen_names[name]}.pdf"
+
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc_id in ids:
+            doc = db_module.get_document(doc_id)
+            if doc is None:
+                errors.append({"id": doc_id, "error": "not found"})
+                continue
+            filename = _unique((doc.get("new_filename") or f"document_{doc_id}") + ".pdf")
+
+            # Try local ARCHIVE_ROOT first (fast path)
+            if _ARCHIVE_ROOT and doc.get("onedrive_path"):
+                try:
+                    local_path = (_ARCHIVE_ROOT / _local_onedrive_path(doc["onedrive_path"])).resolve()
+                    local_path.relative_to(_ARCHIVE_ROOT)  # path-traversal guard
+                    if local_path.is_file():
+                        zf.write(str(local_path), filename)
+                        added += 1
+                        continue
+                except (ValueError, PermissionError, OSError):
+                    pass
+
+            # Fall back to Graph API download
+            if graph and doc.get("onedrive_path"):
+                try:
+                    item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
+                    content = graph.download_file(item["id"])
+                    zf.writestr(filename, content)
+                    added += 1
+                    continue
+                except Exception as e:
+                    errors.append({"id": doc_id, "error": str(e)})
+                    continue
+
+            errors.append({"id": doc_id, "error": "no download source available"})
+
+    if added == 0:
+        return jsonify({"error": "No files could be downloaded", "errors": errors}), 422
+
+    buf.seek(0)
+    zip_name = f"Ablage_{date.today().isoformat()}.zip"
+    return Response(
+        buf.getvalue(),
+        mimetype="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=\"{zip_name}\""},
+    )
 
 
 @app.route("/api/documents/bulk-delete", methods=["POST"])
