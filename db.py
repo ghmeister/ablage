@@ -455,6 +455,7 @@ def search_documents(
     document_type: Optional[str] = None,
     year: Optional[str] = None,
     sender: Optional[str] = None,
+    recipient: Optional[str] = None,
     email_only: bool = False,
     page: int = 1,
     per_page: int = 25,
@@ -488,6 +489,10 @@ def search_documents(
     if sender:
         conds.append("(sender LIKE ? OR company LIKE ? OR email_from LIKE ?)")
         params.extend([f"%{sender}%", f"%{sender}%", f"%{sender}%"])
+
+    if recipient:
+        conds.append("recipient LIKE ?")
+        params.append(f"%{recipient}%")
 
     if email_only:
         conds.append("email_source = 1")

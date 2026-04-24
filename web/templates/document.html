@@ -63,6 +63,11 @@
         <button class="btn btn-sm btn-outline-light" id="cancelTypeBtn">✕</button>
       </span>
       {% endif %}
+      <button id="taxBtn"
+              class="btn btn-sm {% if doc.tax_relevant %}btn-warning{% else %}btn-outline-light{% endif %}"
+              title="Steuerrelevanz umschalten">
+        {% if doc.tax_relevant %}★{% else %}☆{% endif %}
+      </button>
     </div>
   </div>
 
@@ -165,7 +170,7 @@
       {# Email source #}
       {% if doc.email_source %}
       <div class="col-12">
-        <div class="border rounded px-3 py-2 bg-light">
+        <div class="border rounded px-3 py-2" style="background:var(--app-surface-2);border-color:var(--app-border)!important">
           <div class="d-flex align-items-center gap-2 mb-1">
             <span class="badge bg-secondary">✉ Per E-Mail erhalten</span>
             {% if doc.email_message_id %}
@@ -245,7 +250,7 @@
           ▸ Extrahierter Text
         </button>
         <div class="collapse" id="extractedText">
-          <pre class="bg-light border rounded p-3 mt-2 extracted-text">{{ doc.extracted_text }}</pre>
+          <pre class="border rounded p-3 mt-2 extracted-text" style="background:var(--app-surface-2);border-color:var(--app-border)!important;color:var(--app-text)">{{ doc.extracted_text }}</pre>
         </div>
       </div>
       {% endif %}
@@ -270,11 +275,6 @@
 <button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">☁ OneDrive</button>
 <button id="deleteBtn" class="btn btn-outline-danger btn-sm ms-2">🗑 Löschen</button>
 {% endif %}
-<button id="taxBtn"
-        class="btn btn-sm ms-2 {% if doc.tax_relevant %}btn-warning{% else %}btn-outline-secondary{% endif %}"
-        title="Steuerrelevanz umschalten">
-  {% if doc.tax_relevant %}★ Steuerrelevant{% else %}☆ Als steuerrelevant markieren{% endif %}
-</button>
 
 <script>
 // ---------- Open in Gmail (iOS app scheme + web fallback) ----------

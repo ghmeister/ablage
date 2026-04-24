@@ -18,6 +18,18 @@ from typing import TYPE_CHECKING, Optional
 
 import db as _db
 
+def _load_type_labels() -> dict[str, str]:
+    try:
+        import yaml
+        from pathlib import Path
+        rules_path = Path(__file__).parent / "classification_rules.yaml"
+        with open(rules_path, encoding="utf-8") as f:
+            return yaml.safe_load(f).get("type_labels", {})
+    except Exception:
+        return {}
+
+_TYPE_LABELS_DE = _load_type_labels()
+
 if TYPE_CHECKING:
     from graph_client import GraphClient
 
@@ -63,7 +75,7 @@ class TelegramBot:
         doc_date: Optional[str],
         email_from: Optional[str] = None,
     ) -> None:
-        type_str = _esc(doc_type or "Unbekannt")
+        type_str = _esc(_TYPE_LABELS_DE.get(doc_type or "", doc_type or "Unbekannt"))
         date_str = f" vom {_esc(doc_date)}" if doc_date else ""
         source_str = f"\n✉ Per E\-Mail von _{_esc(email_from)}_" if email_from else ""
         text = (

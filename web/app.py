@@ -106,10 +106,12 @@ _PER_PAGE = 25
 _FAMILY_FIRST_NAMES = ["Manuel", "Judith", "Clara", "Nora", "Dominik"]
 
 def _normalize_recipient(raw: str | None) -> str:
-    """Return comma-joined first names found in the recipient string, or the raw value."""
+    """Return comma-joined first names found in the recipient string, or the raw value.
+    Matches case-insensitively so 'MANUEL OLIVER MEISTER' → 'Manuel'."""
     if not raw:
         return "–"
-    found = [n for n in _FAMILY_FIRST_NAMES if n in raw]
+    words = raw.lower().split()
+    found = [n for n in _FAMILY_FIRST_NAMES if n.lower() in words]
     if found:
         return ", ".join(found)
     # Fallback: truncate very long raw values
@@ -221,6 +223,7 @@ def index() -> str:
     doc_type = request.args.get("type", "").strip()
     year = request.args.get("year", "").strip()
     sender = request.args.get("sender", "").strip()
+    recipient = request.args.get("recipient", "").strip()
     sort_by = request.args.get("sort", "scan_timestamp").strip()
     sort_order = request.args.get("order", "desc").strip()
     try:
@@ -234,6 +237,7 @@ def index() -> str:
             document_type=doc_type or None,
             year=year or None,
             sender=sender or None,
+            recipient=recipient or None,
             page=page,
             per_page=_PER_PAGE,
             sort_by=sort_by,
@@ -255,9 +259,11 @@ def index() -> str:
         doc_type=doc_type,
         year=year,
         sender=sender,
+        recipient=recipient,
         doc_types=db_module.get_distinct_values("document_type"),
         years=db_module.get_distinct_years(),
         senders=db_module.get_distinct_values("sender"),
+        recipients=db_module.get_distinct_values("recipient"),
         type_labels=TYPE_LABELS,
         type_colors=TYPE_COLORS,
         sort_by=sort_by,
@@ -283,7 +289,7 @@ def document(doc_id: int) -> str:
     # Build back URL from search params passed in the URL, fall back to referrer
     # Explicit back param takes priority (e.g. ?back=/duplicates from duplicate alert link)
     explicit_back = request.args.get("back", "").strip()
-    _back_args = {k: request.args.get(k, "") for k in ("q", "type", "year", "sender", "sort", "order", "page")}
+    _back_args = {k: request.args.get(k, "") for k in ("q", "type", "year", "sender", "recipient", "sort", "order", "page")}
     if explicit_back:
         back_url = explicit_back
     elif any(_back_args.values()):

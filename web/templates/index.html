@@ -67,12 +67,21 @@
               {% endfor %}
             </select>
           </div>
-          <div class="col-12 col-md-3">
+          <div class="col-12 col-md-2">
             <label class="form-label fw-semibold small mb-1">Absender</label>
             <select name="sender" class="form-select form-select-sm">
               <option value="">Alle Absender</option>
               {% for s in senders %}
               <option value="{{ s }}" {% if sender == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label fw-semibold small mb-1">Empfänger</label>
+            <select name="recipient" class="form-select form-select-sm">
+              <option value="">Alle Empfänger</option>
+              {% for r in recipients %}
+              <option value="{{ r }}" {% if recipient == r %}selected{% endif %}>{{ r | recipient }}</option>
               {% endfor %}
             </select>
           </div>
