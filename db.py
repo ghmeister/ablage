@@ -454,6 +454,7 @@ def search_documents(
     query: Optional[str] = None,
     document_type: Optional[str] = None,
     year: Optional[str] = None,
+    year_from: Optional[str] = None,
     sender: Optional[str] = None,
     recipient: Optional[str] = None,
     email_only: bool = False,
@@ -485,6 +486,10 @@ def search_documents(
     if year:
         conds.append("substr(document_date, 1, 4) = ?")
         params.append(year)
+
+    if year_from:
+        conds.append("substr(document_date, 1, 4) >= ?")
+        params.append(year_from)
 
     if sender:
         conds.append("(sender LIKE ? OR company LIKE ? OR email_from LIKE ?)")
@@ -605,6 +610,12 @@ def get_statistics() -> dict:
             "WHERE document_type IS NOT NULL "
             "GROUP BY document_type ORDER BY cnt DESC LIMIT 8"
         ).fetchall()
+        top_senders = conn.execute(
+            "SELECT COALESCE(NULLIF(sender,''), NULLIF(company,''), '(unbekannt)') AS name,"
+            "       COUNT(*) AS cnt"
+            " FROM documents"
+            " GROUP BY name ORDER BY cnt DESC LIMIT 15"
+        ).fetchall()
     return {
         "total": total,
         "this_month": this_month,
@@ -612,6 +623,7 @@ def get_statistics() -> dict:
         "tax_relevant": tax_count,
         "email_source": email_count,
         "by_type": [(r[0], r[1]) for r in by_type],
+        "top_senders": [{"name": r[0], "count": r[1]} for r in top_senders],
     }
 
 

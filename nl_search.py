@@ -57,7 +57,8 @@ _INTENT_SYSTEM = (
     '{{"is_document_query": true|false,\n'
     ' "document_type": "<exact type from known list or null>",\n'
     ' "sender": "<short company name, e.g. BKW / KPT / Allianz / Mobiliar — or null>",\n'
-    ' "year": "<4-digit year or null>",\n'
+    ' "year": "<4-digit year for exact-year queries like \'in 2024\', or null>",\n'
+    ' "year_from": "<4-digit year for since/ab/seit queries like \'seit 2024\' — returns docs from that year onwards, or null>",\n'
     ' "keywords": "<1-3 key terms for semantic search, or null>",\n'
     ' "sort": "date_desc" | "date_asc" | "relevance",\n'
     ' "limit": <1-20, default 10>}}\n'
@@ -68,7 +69,8 @@ _INTENT_SYSTEM = (
     "Only set is_document_query=false for pure greetings with no document intent (e.g. 'Hello', 'How are you'). "
     "Use sort=date_desc + limit=1 for 'latest/most recent X'. "
     "Use sort=date_asc for oldest. "
-    "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X). "
+    "Use limit=20 for aggregation questions (total, sum, how much overall, how many in total, all from X, alle von X). "
+    "Use year_from (not year) for since/ab/seit queries — e.g. 'seit 2024' → year_from=2024. "
     "Default limit=10 for listing questions. "
     "Only return JSON, no other text."
 )
@@ -171,20 +173,21 @@ def run(
             "stats": stats,
         }
 
-    doc_type = intent.get("document_type") or None
-    sender   = intent.get("sender") or None
-    year     = intent.get("year") or None
-    _kw      = intent.get("keywords")
-    keywords = " ".join(_kw) if isinstance(_kw, list) else (_kw or None)
-    sort     = intent.get("sort", "relevance")
-    limit    = max(1, min(int(intent.get("limit") or 10), 20))
+    doc_type  = intent.get("document_type") or None
+    sender    = intent.get("sender") or None
+    year      = intent.get("year") or None
+    year_from = intent.get("year_from") or None
+    _kw       = intent.get("keywords")
+    keywords  = " ".join(_kw) if isinstance(_kw, list) else (_kw or None)
+    sort      = intent.get("sort", "relevance")
+    limit     = max(1, min(int(intent.get("limit") or 10), 20))
 
     sort_by    = "document_date" if sort in ("date_desc", "date_asc") else "scan_timestamp"
     sort_order = "asc" if sort == "date_asc" else "desc"
 
     print(
         f"NL intent : type={doc_type!r} sender={sender!r} year={year!r} "
-        f"keywords={keywords!r} sort={sort} limit={limit}"
+        f"year_from={year_from!r} keywords={keywords!r} sort={sort} limit={limit}"
     )
 
     # ── Step 2: retrieve candidates ───────────────────────────────────────────
@@ -197,7 +200,7 @@ def run(
     # For aggregation queries (limit=20) with structured filters, prioritise the
     # deterministic DB query first so that unrelated semantic hits don't crowd
     # out the actually-matching documents and produce inconsistent sums.
-    is_aggregation = limit >= 15 and (doc_type or sender or year or keywords)
+    is_aggregation = limit >= 15 and (doc_type or sender or year or year_from or keywords)
 
     def _add_db_rows() -> None:
         db_rows, _ = db.search_documents(
@@ -205,6 +208,7 @@ def run(
             document_type=doc_type,
             sender=sender,
             year=year,
+            year_from=year_from,
             per_page=limit,
             sort_by=sort_by,
             sort_order=sort_order,
