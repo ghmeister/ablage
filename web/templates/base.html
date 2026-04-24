@@ -156,7 +156,23 @@
       border-color: var(--app-border);
       color: var(--app-text);
     }
+    [data-theme="obsidian"] .form-control:focus,
+    [data-theme="obsidian"] .form-select:focus {
+      background-color: rgba(255,255,255,.12);
+      border-color: var(--app-accent);
+      box-shadow: 0 0 0 .2rem rgba(129,140,248,.25);
+      color: var(--app-text);
+    }
     [data-theme="obsidian"] .form-control::placeholder { color: var(--app-text-muted); }
+    /* Native <option> list styling (Chrome/Edge honour this on Windows) */
+    [data-theme="obsidian"] .form-select option {
+      background-color: #16162a;
+      color: #e8e8f0;
+    }
+    [data-theme="obsidian"] .form-select option:checked,
+    [data-theme="obsidian"] .form-select option:hover {
+      background-color: #2e2e54;
+    }
     [data-theme="sakura"] .form-control,
     [data-theme="sakura"] .form-select {
       border-color: var(--app-border);
