@@ -358,6 +358,7 @@ def _init_telegram(graph=None, source_folder_id: str = "") -> None:
             source_folder_id=source_folder_id,
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
             nl_max_distance=float(os.getenv("NL_MAX_DISTANCE", "1.05")),  # L2 distance; ~0.97-1.02 for good matches
+            allowed_users=os.getenv("TELEGRAM_ALLOWED_USERS", ""),
         )
         _telegram.start_polling()
         print("Telegram  : Bot gestartet, warte auf Nachrichten…")

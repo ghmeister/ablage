@@ -53,6 +53,7 @@ class TelegramBot:
         source_folder_id: str = "",
         openai_api_key: str = "",
         nl_max_distance: float = 0.75,
+        allowed_users: Optional[str] = None,
     ):
         self._token = token
         self._chat_id = str(chat_id)
@@ -62,6 +63,12 @@ class TelegramBot:
         self._openai_api_key = openai_api_key
         self._nl_max_distance = nl_max_distance
         self._offset = 0
+        # Whitelist: always includes the primary chat_id; TELEGRAM_ALLOWED_USERS adds more
+        extra = {u.strip() for u in allowed_users.split(",") if u.strip()} if allowed_users else set()
+        self._allowed_ids: set[str] = {self._chat_id} | extra
+
+    def _is_allowed(self, chat_id: str) -> bool:
+        return chat_id in self._allowed_ids
 
     # ------------------------------------------------------------------
     # Public API
@@ -210,6 +217,12 @@ class TelegramBot:
         chat_id = str(msg.get("chat", {}).get("id", ""))
         message_id = msg.get("message_id")
 
+        if not self._is_allowed(chat_id):
+            user = cb.get("from", {})
+            print(f"Warning   : Telegram: unauthorized callback from chat_id={chat_id} user={user.get('username') or user.get('first_name', '?')}")
+            self._api("answerCallbackQuery", {"callback_query_id": cb_id, "text": "Kein Zugriff."})
+            return
+
         if data.startswith("tax:"):
             _, doc_id_str, value_str = data.split(":")
             doc_id, value = int(doc_id_str), int(value_str)
@@ -265,8 +278,9 @@ class TelegramBot:
     def _handle_message(self, msg: dict) -> None:
         chat_id = str(msg.get("chat", {}).get("id", ""))
 
-        # Only respond to the configured chat
-        if chat_id != self._chat_id:
+        if not self._is_allowed(chat_id):
+            user = msg.get("from", {})
+            print(f"Warning   : Telegram: unauthorized message from chat_id={chat_id} user={user.get('username') or user.get('first_name', '?')}")
             return
 
         # PDF document forwarded to bot
