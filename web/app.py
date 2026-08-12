@@ -758,23 +758,36 @@ def download_pdf(doc_id: int):
 
 @app.route("/pdf/<int:doc_id>")
 def open_pdf(doc_id: int):
-    if _ARCHIVE_ROOT is None:
-        abort(404, "ARCHIVE_ROOT not configured")
     doc = db_module.get_document(doc_id)
     if doc is None:
         abort(404)
-    # Resolve and verify path stays within ARCHIVE_ROOT (prevents path traversal)
-    pdf_path = (_ARCHIVE_ROOT / _local_onedrive_path(doc["onedrive_path"])).resolve()
+    onedrive_path = doc.get("onedrive_path")
+    if not onedrive_path:
+        abort(404)
+
+    # Try local ARCHIVE_ROOT first (fast path)
+    if _ARCHIVE_ROOT is not None:
+        pdf_path = (_ARCHIVE_ROOT / _local_onedrive_path(onedrive_path)).resolve()
+        try:
+            pdf_path.relative_to(_ARCHIVE_ROOT)  # path-traversal guard
+        except ValueError:
+            abort(403)
+        try:
+            if pdf_path.is_file():
+                return send_file(str(pdf_path), mimetype="application/pdf")
+        except PermissionError:
+            pass  # fall through to Graph API
+
+    # Fall back to Graph API (e.g. local sync mirror is stale or unreadable)
+    graph = _get_graph()
+    if graph is None:
+        abort(404, "PDF not found locally and Graph API not configured")
     try:
-        pdf_path.relative_to(_ARCHIVE_ROOT)
-    except ValueError:
-        abort(403)
-    try:
-        if not pdf_path.is_file():
-            abort(404)
-    except PermissionError:
-        abort(403, "No read access to archive — run: chmod -R o+rX <archive_path> on the host")
-    return send_file(str(pdf_path), mimetype="application/pdf")
+        item = graph.get_item_by_path(_full_onedrive_path(onedrive_path))
+        content = graph.download_file(item["id"])
+    except Exception as e:
+        abort(404, f"PDF not found locally and Graph API download failed: {e}")
+    return Response(content, mimetype="application/pdf", headers={"Content-Disposition": "inline"})
 
 
 @app.route("/api/costs")
