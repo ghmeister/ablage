@@ -6,6 +6,10 @@ Required env vars:
     TELEGRAM_BOT_TOKEN   — from @BotFather
     TELEGRAM_CHAT_ID     — your personal chat ID
     ABLAGE_URL           — e.g. https://ablage.meisterm.dnsuser.de (for deep links)
+
+Optional:
+    TELEGRAM_ALLOWED_USERS — comma-separated extra chat IDs allowed to use the
+                              bot and receive notifications, alongside TELEGRAM_CHAT_ID
 """
 from __future__ import annotations
 
@@ -70,6 +74,10 @@ class TelegramBot:
     def _is_allowed(self, chat_id: str) -> bool:
         return chat_id in self._allowed_ids
 
+    def _broadcast(self, text: str, keyboard: Optional[list] = None) -> None:
+        for chat_id in self._allowed_ids:
+            self._send(chat_id, text, keyboard=keyboard)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -93,7 +101,7 @@ class TelegramBot:
         if self._ablage_url:
             buttons.append({"text": "🔗 In Ablage öffnen", "url": f"{self._ablage_url}/document/{doc_id}"})
         buttons.append({"text": "★ Steuerrelevant", "callback_data": f"tax:{doc_id}:1"})
-        self._send(self._chat_id, text, keyboard=[[b] for b in buttons])
+        self._broadcast(text, keyboard=[[b] for b in buttons])
 
     def notify_duplicate(
         self,
@@ -112,7 +120,7 @@ class TelegramBot:
             [{"text": "✓ Behalten", "callback_data": f"dup_keep:{new_doc_id}"}],
             [{"text": "🗑 Als Duplikat löschen", "callback_data": f"dup_del:{new_doc_id}"}],
         ]
-        self._send(self._chat_id, text, keyboard=keyboard)
+        self._broadcast(text, keyboard=keyboard)
 
     def start_polling(self) -> None:
         t = threading.Thread(target=self._poll_loop, daemon=True, name="telegram-poll")

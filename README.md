@@ -224,6 +224,7 @@ This embeds all existing documents for semantic and NL search (~$0.01 per 500 do
 | `NL_MAX_DISTANCE` | — | Vector search threshold (default: `1.05`) |
 | `TELEGRAM_BOT_TOKEN` | — | From [@BotFather](https://t.me/BotFather) |
 | `TELEGRAM_CHAT_ID` | — | Your Telegram chat ID |
+| `TELEGRAM_ALLOWED_USERS` | — | Comma-separated extra chat IDs allowed to use the bot and receive notifications |
 | `ABLAGE_URL` | — | Public URL of the web UI (for Telegram deep links) |
 | `HA_URL` | — | Home Assistant base URL |
 | `HA_TOKEN` | — | Home Assistant long-lived access token |

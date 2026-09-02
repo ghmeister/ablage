@@ -30,6 +30,7 @@ services:
             # Optional: Telegram notifications
             # - TELEGRAM_BOT_TOKEN=your-bot-token
             # - TELEGRAM_CHAT_ID=your-chat-id
+            # - TELEGRAM_ALLOWED_USERS=other-chat-id,another-chat-id
             # - ABLAGE_URL=https://ablage.meisterm.dnsuser.de
             # Optional: Home Assistant push notifications
             # - HA_URL=http://homeassistant:8123
