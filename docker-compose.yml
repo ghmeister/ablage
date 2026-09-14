@@ -55,6 +55,9 @@ services:
             - CLIENT_ID=replace-me
             # - CLIENT_SECRET=replace-me
             # - USER_ID=user@example.com
+            # Required for the web-UI document upload feature — same drop zone the bot polls:
+            - SOURCE_FOLDER_ID=replace-me
+            # - MAX_UPLOAD_MB=25
             - OUTPUT_BASE_FOLDER=Archive
             - CLASSIFICATION_RULES_FILE=/app/classification_rules.yaml
             - UI_USER=admin

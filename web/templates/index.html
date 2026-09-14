@@ -14,6 +14,9 @@
       {{ total }} Dokument{% if total != 1 %}e{% endif %}
       {% if unseen_count %}<span class="badge bg-primary ms-1">{{ unseen_count }} neu</span>{% endif %}
     </span>
+    {% if upload_enabled %}
+    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal">⬆ Hochladen</button>
+    {% endif %}
     {% if download_enabled %}
     <button id="bulkDownloadBtn" class="btn btn-outline-success btn-sm d-none">⬇ Herunterladen (<span id="selCountDl">0</span>)</button>
     {% endif %}
@@ -282,6 +285,35 @@
 </div>
 {% endif %}
 
+{% if upload_enabled %}
+{# ── Upload modal ────────────────────────────────────────────────── #}
+<div class="modal fade" id="uploadModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">⬆ Dokumente hochladen</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="uploadDropzone" class="border border-2 border-dashed rounded p-4 text-center text-muted"
+             style="cursor:pointer">
+          <div style="font-size:2rem">📄</div>
+          <p class="mb-1">PDFs hierher ziehen oder klicken zum Auswählen</p>
+          <p class="small mb-0">Werden automatisch analysiert, einsortiert und der Ablage hinzugefügt.</p>
+          <input type="file" id="uploadInput" accept="application/pdf,.pdf" multiple hidden>
+        </div>
+        <ul id="uploadFileList" class="list-group list-group-flush mt-3"></ul>
+        <div id="uploadResult" class="small mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Schließen</button>
+        <button type="button" id="uploadSubmitBtn" class="btn btn-primary" disabled>Hochladen</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <script>
 // Poll bot status every 5s — show banner when processing
 (function pollBotStatus() {
@@ -303,6 +335,96 @@
   setTimeout(pollBotStatus, 5000);
 })();
 </script>
+
+{% if upload_enabled %}
+<script>
+(function () {
+  const dropzone   = document.getElementById('uploadDropzone');
+  const input      = document.getElementById('uploadInput');
+  const fileList   = document.getElementById('uploadFileList');
+  const submitBtn  = document.getElementById('uploadSubmitBtn');
+  const resultBox  = document.getElementById('uploadResult');
+  const modalEl    = document.getElementById('uploadModal');
+  if (!dropzone) return;
+
+  let selectedFiles = [];
+
+  function renderFileList() {
+    fileList.innerHTML = '';
+    selectedFiles.forEach((f) => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center px-0 py-1';
+      li.innerHTML = `<span class="small text-truncate me-2">${f.name}</span>
+                      <span class="small text-muted flex-shrink-0">${(f.size/1024/1024).toFixed(1)} MB</span>`;
+      fileList.appendChild(li);
+    });
+    submitBtn.disabled = selectedFiles.length === 0;
+  }
+
+  function addFiles(fileListArg) {
+    const pdfs = [...fileListArg].filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    const rejected = fileListArg.length - pdfs.length;
+    selectedFiles = selectedFiles.concat(pdfs);
+    renderFileList();
+    resultBox.innerHTML = rejected > 0
+      ? `<span class="text-warning">${rejected} Datei(en) ignoriert (nur PDF wird unterstützt).</span>`
+      : '';
+  }
+
+  dropzone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { addFiles(input.files); input.value = ''; });
+
+  ['dragover', 'dragenter'].forEach(evt => dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    dropzone.classList.add('border-primary');
+  }));
+  ['dragleave', 'drop'].forEach(evt => dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    dropzone.classList.remove('border-primary');
+  }));
+  dropzone.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+
+  modalEl.addEventListener('hidden.bs.modal', () => {
+    selectedFiles = [];
+    renderFileList();
+    resultBox.innerHTML = '';
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    if (!selectedFiles.length) return;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Lädt hoch …';
+    resultBox.innerHTML = '';
+
+    const formData = new FormData();
+    selectedFiles.forEach(f => formData.append('files', f));
+
+    try {
+      const resp = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok && !(data.uploaded && data.uploaded.length)) {
+        throw new Error(data.error || resp.statusText);
+      }
+      let html = '';
+      if (data.uploaded && data.uploaded.length) {
+        html += `<div class="text-success">✓ ${data.uploaded.length} Datei(en) hochgeladen — wird in Kürze analysiert und einsortiert.</div>`;
+      }
+      if (data.errors && data.errors.length) {
+        html += '<div class="text-danger mt-1">' + data.errors.map(e => `✕ ${e.filename}: ${e.error}`).join('<br>') + '</div>';
+      }
+      resultBox.innerHTML = html;
+      selectedFiles = [];
+      renderFileList();
+    } catch (e) {
+      resultBox.innerHTML = `<span class="text-danger">Fehler: ${e.message}</span>`;
+    } finally {
+      submitBtn.disabled = selectedFiles.length === 0;
+      submitBtn.textContent = 'Hochladen';
+    }
+  });
+})();
+</script>
+{% endif %}
 
 {% if (download_enabled or graph_enabled) and rows %}
 <script>

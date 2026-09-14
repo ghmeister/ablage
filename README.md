@@ -70,7 +70,7 @@ Ask in any language, from Telegram or the web UI:
 GPT-4o-mini extracts the intent, queries the database, reads the relevant document chunks, and answers — with clickable links to each source document.
 
 ### Web UI
-A clean, mobile-friendly interface to search, filter, view metadata, reclassify, rename, and open documents. Runs behind your existing reverse proxy with session authentication.
+A clean, mobile-friendly interface to search, filter, view metadata, reclassify, rename, and open documents. Runs behind your existing reverse proxy with session authentication. An upload button lets you drop PDFs straight into the drop zone from a browser — they go through the same AI classification and filing pipeline as any other scanned document.
 
 ![Web UI](https://raw.githubusercontent.com/ghmeister/ablage/main/docs/screenshot.png)
 
@@ -239,7 +239,9 @@ This embeds all existing documents for semantic and NL search (~$0.01 per 500 do
 | `UI_PASSWORD` | ✓ | Login password |
 | `SECRET_KEY` | ✓ | Flask session secret — any long random string |
 | `OPENAI_API_KEY` | ✓ | Required for NL search in the web UI |
-| `TENANT_ID` / `CLIENT_ID` | — | Required for reclassify and rename features |
+| `TENANT_ID` / `CLIENT_ID` | — | Required for reclassify, rename, and upload features |
+| `SOURCE_FOLDER_ID` | — | Drop zone folder ID — required for the document upload feature |
+| `MAX_UPLOAD_MB` | — | Max size per uploaded file, default 25 |
 | `OUTPUT_BASE_FOLDER` | — | Must match bot config |
 | `ARCHIVE_ROOT` | — | Local mount path for PDFs — skips Graph API round-trip |
 

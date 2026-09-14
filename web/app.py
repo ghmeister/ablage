@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from math import ceil
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -26,6 +27,9 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 
 _archive_root_env = os.getenv("ARCHIVE_ROOT", "").strip()
 _ARCHIVE_ROOT = Path(_archive_root_env).resolve() if _archive_root_env else None
+
+_SOURCE_FOLDER_ID = os.getenv("SOURCE_FOLDER_ID", "").strip()
+_MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "25"))
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -46,9 +50,16 @@ if _secret_key == "dev-secret-change-me":
     import warnings
     warnings.warn("SECRET_KEY is set to the insecure default — set the SECRET_KEY env var in production!", stacklevel=1)
 app.secret_key = _secret_key
+# Generous overall cap for a multi-file upload batch — per-file size is enforced separately.
+app.config["MAX_CONTENT_LENGTH"] = 20 * _MAX_UPLOAD_MB * 1024 * 1024
 
 _UI_USER = os.getenv("UI_USER", "").strip()
 _UI_PASSWORD = os.getenv("UI_PASSWORD", "").strip()
+
+
+@app.errorhandler(413)
+def _upload_too_large(e):
+    return jsonify({"error": f"Datei(en) zu groß (max. {_MAX_UPLOAD_MB} MB pro Datei)"}), 413
 
 
 @app.before_request
@@ -271,6 +282,7 @@ def index() -> str:
         archive_configured=_ARCHIVE_ROOT is not None,
         graph_enabled=bool(_get_graph()),
         download_enabled=_ARCHIVE_ROOT is not None or bool(_get_graph()),
+        upload_enabled=bool(_SOURCE_FOLDER_ID) and bool(_get_graph()),
         unseen_count=db_module.get_unseen_count(),
     )
 
@@ -367,6 +379,53 @@ def nl_search():
     except Exception as e:
         app.logger.error(f"NL search error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/upload", methods=["POST"])
+def upload_documents():
+    """Upload PDFs into the OneDrive drop zone — the bot picks them up on its next poll."""
+    if not _SOURCE_FOLDER_ID:
+        return jsonify({"error": "SOURCE_FOLDER_ID not configured on this server"}), 503
+    graph = _get_graph()
+    if graph is None:
+        return jsonify({"error": "Graph API not configured on this server"}), 503
+
+    files = [f for f in request.files.getlist("files") if f.filename]
+    if not files:
+        return jsonify({"error": "Keine Dateien ausgewählt"}), 400
+
+    uploaded = []
+    errors = []
+    for f in files:
+        original_name = f.filename
+        if not original_name.lower().endswith(".pdf"):
+            errors.append({"filename": original_name, "error": "Nur PDF-Dateien werden unterstützt"})
+            continue
+
+        content = f.read()
+        if not content:
+            errors.append({"filename": original_name, "error": "Leere Datei"})
+            continue
+        if len(content) > _MAX_UPLOAD_MB * 1024 * 1024:
+            errors.append({"filename": original_name, "error": f"Datei größer als {_MAX_UPLOAD_MB} MB"})
+            continue
+
+        safe_name = _sanitize_filename(Path(original_name).name)
+        if not safe_name.lower().endswith(".pdf"):
+            safe_name += ".pdf"
+        # Prefix with a timestamp so concurrent uploads never collide in the drop zone —
+        # the bot renames/moves the file on its own, so this prefix never reaches the archive.
+        unique_name = f"{int(time.time() * 1000)}_{safe_name}"
+
+        try:
+            graph.upload_file(_SOURCE_FOLDER_ID, unique_name, content)
+            uploaded.append(original_name)
+        except Exception as e:
+            app.logger.error(f"Upload failed for {original_name}: {e}")
+            errors.append({"filename": original_name, "error": str(e)})
+
+    status = 200 if uploaded else 422
+    return jsonify({"uploaded": uploaded, "errors": errors}), status
 
 
 @app.route("/api/bot-status")
