@@ -159,7 +159,7 @@
         {{ sort_th("Empfänger", "recipient") }}
         {{ sort_th("Ordner",    "destination_folder") }}
         {{ sort_th("Erfasst",   "scan_timestamp",     "90px") }}
-        {% if archive_configured %}<th style="width:44px"></th>{% endif %}
+        {% if archive_configured or download_enabled %}<th style="width:76px"></th>{% endif %}
       </tr>
     </thead>
     <tbody>
@@ -188,10 +188,12 @@
         <td class="small text-muted text-nowrap">
           {{ row.scan_timestamp[:10] if row.scan_timestamp else '–' }}
         </td>
-        {% if archive_configured %}
-        <td onclick="event.stopPropagation()">
+        {% if archive_configured or download_enabled %}
+        <td onclick="event.stopPropagation()" class="text-nowrap">
           <a href="/pdf/{{ row.id }}" target="_blank"
              class="btn btn-outline-secondary btn-sm py-0 px-1" title="PDF öffnen">&#128196;</a>
+          <a href="/pdf/{{ row.id }}?download=1"
+             class="btn btn-outline-success btn-sm py-0 px-1" title="PDF herunterladen">&#11015;</a>
         </td>
         {% endif %}
       </tr>
@@ -222,9 +224,11 @@
         </span>{% if row.tax_relevant %}<span title="Steuerrelevant" style="color:#ffc107;font-size:0.75rem" class="flex-shrink-0">★</span>{% endif %}{% if row.email_source %}<span title="Per E-Mail erhalten" style="font-size:0.75rem" class="flex-shrink-0">✉</span>{% endif %}
         <span class="small text-truncate flex-grow-1 min-w-0" style="color:var(--app-text-muted)">{{ row.sender or row.company or '–' }}</span>
         <span class="small flex-shrink-0" style="color:var(--app-text-muted)">{{ row.document_date or '–' }}</span>
-        {% if archive_configured %}
+        {% if archive_configured or download_enabled %}
         <a href="/pdf/{{ row.id }}" target="_blank"
            class="btn btn-outline-secondary btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden" title="PDF öffnen">&#128196;</a>
+        <a href="/pdf/{{ row.id }}?download=1"
+           class="btn btn-outline-success btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden" title="PDF herunterladen">&#11015;</a>
         {% endif %}
       </div>
     </div>

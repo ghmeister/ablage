@@ -815,14 +815,25 @@ def download_pdf(doc_id: int):
     )
 
 
+def _content_disposition(filename: str, attachment: bool) -> str:
+    """Build a Content-Disposition header that also works for non-ASCII names (umlauts)."""
+    from urllib.parse import quote
+    kind = "attachment" if attachment else "inline"
+    ascii_name = filename.encode("ascii", "replace").decode("ascii").replace('"', "'")
+    return f"{kind}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename)}"
+
+
 @app.route("/pdf/<int:doc_id>")
 def open_pdf(doc_id: int):
+    """Open a PDF inline, or download it as a file with ?download=1."""
     doc = db_module.get_document(doc_id)
     if doc is None:
         abort(404)
     onedrive_path = doc.get("onedrive_path")
     if not onedrive_path:
         abort(404)
+    as_attachment = request.args.get("download") == "1"
+    filename = (doc.get("new_filename") or f"document_{doc_id}") + ".pdf"
 
     # Try local ARCHIVE_ROOT first (fast path)
     if _ARCHIVE_ROOT is not None:
@@ -833,7 +844,12 @@ def open_pdf(doc_id: int):
             abort(403)
         try:
             if pdf_path.is_file():
-                return send_file(str(pdf_path), mimetype="application/pdf")
+                return send_file(
+                    str(pdf_path),
+                    mimetype="application/pdf",
+                    as_attachment=as_attachment,
+                    download_name=filename,
+                )
         except PermissionError:
             pass  # fall through to Graph API
 
@@ -846,7 +862,11 @@ def open_pdf(doc_id: int):
         content = graph.download_file(item["id"])
     except Exception as e:
         abort(404, f"PDF not found locally and Graph API download failed: {e}")
-    return Response(content, mimetype="application/pdf", headers={"Content-Disposition": "inline"})
+    return Response(
+        content,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": _content_disposition(filename, as_attachment)},
+    )
 
 
 @app.route("/api/costs")
