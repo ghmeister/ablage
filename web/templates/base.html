@@ -544,6 +544,89 @@
   });
 })();
 
+/* ── PDF download on iPhone/iPad ──────────────────────────────────────────
+   iOS ignores "Content-Disposition: attachment" and only shows the PDF, so on
+   iOS the download buttons (.js-dl) fetch the file and open the share sheet,
+   which offers "In Dateien sichern". Other platforms use the plain link. */
+(function () {
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!isIOS) return;
+
+  var prepared = new WeakMap();   // button -> File, waiting for a second tap
+
+  function restore(a) {
+    if (a.dataset.origHtml) a.innerHTML = a.dataset.origHtml;
+    delete a.dataset.origHtml;
+    delete a.dataset.busy;
+  }
+
+  function saveViaLink(file) {
+    var url = URL.createObjectURL(file);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+
+  function shareFile(a, file) {
+    return navigator.share({ files: [file] }).then(function () {
+      restore(a);
+    }, function (err) {
+      // iOS only allows the share sheet right after a tap. If the download took
+      // too long, keep the file and ask for one more tap.
+      if (err.name === 'NotAllowedError' && !prepared.has(a)) {
+        prepared.set(a, file);
+        delete a.dataset.busy;
+        a.innerHTML = a.dataset.readyLabel || '📥';
+        a.title = 'Nochmals tippen zum Sichern';
+        return;
+      }
+      restore(a);
+      if (err.name !== 'AbortError') alert('Sichern fehlgeschlagen: ' + err.message);
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.js-dl');
+    if (!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    var ready = prepared.get(a);
+    if (ready) {                      // second tap: share synchronously
+      prepared.delete(a);
+      shareFile(a, ready);
+      return;
+    }
+    if (a.dataset.busy) return;
+    a.dataset.busy = '1';
+    a.dataset.origHtml = a.innerHTML;
+    a.innerHTML = '…';
+
+    fetch(a.href, { credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.blob();
+      })
+      .then(function (blob) {
+        var file = new File([blob], a.dataset.filename || 'Dokument.pdf', { type: 'application/pdf' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          return shareFile(a, file);
+        }
+        saveViaLink(file);
+        restore(a);
+      })
+      .catch(function (err) {
+        restore(a);
+        alert('Download-Fehler: ' + err.message);
+      });
+  }, true);
+})();
+
 /* ── Cost badge ───────────────────────────────────────────────────────── */
 (function () {
   function fmt(usd)     { return usd < 0.01 ? (usd*100).toFixed(2)+' ¢' : '$'+usd.toFixed(4); }

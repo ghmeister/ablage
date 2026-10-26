@@ -192,8 +192,8 @@
         <td onclick="event.stopPropagation()" class="text-nowrap">
           <a href="/pdf/{{ row.id }}" target="_blank"
              class="btn btn-outline-secondary btn-sm py-0 px-1" title="PDF öffnen">&#128196;</a>
-          <a href="/pdf/{{ row.id }}?download=1"
-             class="btn btn-outline-success btn-sm py-0 px-1" title="PDF herunterladen">&#11015;</a>
+          <a href="/pdf/{{ row.id }}?download=1" data-filename="{{ (row.new_filename or 'Dokument') ~ '.pdf' }}"
+             class="btn btn-outline-success btn-sm py-0 px-1 js-dl" title="PDF herunterladen">&#11015;</a>
         </td>
         {% endif %}
       </tr>
@@ -227,8 +227,8 @@
         {% if archive_configured or download_enabled %}
         <a href="/pdf/{{ row.id }}" target="_blank"
            class="btn btn-outline-secondary btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden" title="PDF öffnen">&#128196;</a>
-        <a href="/pdf/{{ row.id }}?download=1"
-           class="btn btn-outline-success btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden" title="PDF herunterladen">&#11015;</a>
+        <a href="/pdf/{{ row.id }}?download=1" data-filename="{{ (row.new_filename or 'Dokument') ~ '.pdf' }}"
+           class="btn btn-outline-success btn-sm py-0 px-1 flex-shrink-0 pdf-btn-portrait-hidden js-dl" title="PDF herunterladen">&#11015;</a>
         {% endif %}
       </div>
     </div>

@@ -270,7 +270,8 @@
     {{ '📂 Lokal' if local_file_exists else '☁️ Graph' }}
   </span>
 </a>
-<a href="/pdf/{{ doc.id }}?download=1" class="btn btn-outline-success btn-sm ms-2">⬇ Herunterladen</a>
+<a href="/pdf/{{ doc.id }}?download=1" data-filename="{{ (doc.new_filename or 'Dokument') ~ '.pdf' }}"
+   data-ready-label="📥 Jetzt sichern" class="btn btn-outline-success btn-sm ms-2 js-dl">⬇ Herunterladen</a>
 {% endif %}
 {% if graph_enabled %}
 <button id="folderBtn" class="btn btn-outline-secondary btn-sm ms-2">☁ OneDrive</button>
