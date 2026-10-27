@@ -334,8 +334,9 @@ def ki():
 @app.route("/api/nl-search", methods=["POST"])
 def nl_search():
     openai_api_key = os.getenv("OPENAI_API_KEY", "")
-    if not openai_api_key:
-        return jsonify({"error": "OPENAI_API_KEY not configured"}), 503
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not openai_api_key and not anthropic_api_key:
+        return jsonify({"error": "OPENAI_API_KEY or ANTHROPIC_API_KEY not configured"}), 503
 
     data = request.get_json() or {}
     question = (data.get("question") or "").strip()
@@ -349,6 +350,36 @@ def nl_search():
 
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
+
+        if anthropic_api_key:
+            # Claude agent: searches the archive in several steps with tools
+            import ki_agent
+
+            result = ki_agent.run(
+                question=question,
+                anthropic_api_key=anthropic_api_key,
+                openai_api_key=openai_api_key,
+                db=db_module,
+                history=history,
+            )
+            linked_docs = []
+            for i in result["referenced_ids"]:
+                doc = db_module.get_document(i)
+                if doc is None:
+                    continue
+                doc_type = doc.get("document_type") or ""
+                linked_docs.append({
+                    "id": doc["id"],
+                    "new_filename": doc.get("new_filename", ""),
+                    "document_type": doc_type,
+                    "document_date": doc.get("document_date", ""),
+                    "sender": doc.get("sender") or doc.get("company") or "",
+                    "chunk_text": result["passages"].get(i, ""),
+                    "type_label": TYPE_LABELS.get(doc_type, doc_type),
+                    "type_color": TYPE_COLORS.get(doc_type, "secondary"),
+                })
+            return jsonify({"answer": result["answer"], "documents": linked_docs})
+
         import nl_search as _nl
 
         result = _nl.run(

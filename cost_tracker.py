@@ -28,7 +28,16 @@ _PRICING: dict[str, tuple[float, float]] = {
     "gpt-4o":                 (0.0025,  0.010),
     "gpt-4o-mini":            (0.00015, 0.0006),
     "text-embedding-3-small": (0.00002, 0.0),
+    # Claude (KI-Suche); server-side fallbacks may answer with an Opus model
+    "claude-sonnet-5-5":      (0.002,   0.010),
+    "claude-opus-5-5":        (0.004,   0.020),
+    "claude-opus-5":          (0.005,   0.025),
+    "claude-opus-4-8":        (0.005,   0.025),
 }
+
+# Anthropic prompt caching: cache writes cost 1.25x, cache reads 0.1x the input price
+_CACHE_WRITE_FACTOR = 1.25
+_CACHE_READ_FACTOR = 0.1
 
 _session = threading.local()
 
@@ -102,8 +111,21 @@ def tag_session(session_id: str, document_id: int) -> None:
 # ── logging ───────────────────────────────────────────────────────────────────
 
 def log(model: str, purpose: str, usage: Any) -> None:
-    """Record an API call. usage is the OpenAI response.usage object."""
+    """Record an API call. usage is the OpenAI or Anthropic response.usage object."""
     try:
+        if hasattr(usage, "cache_read_input_tokens"):  # Anthropic
+            fresh  = usage.input_tokens or 0
+            write  = usage.cache_creation_input_tokens or 0
+            read   = usage.cache_read_input_tokens or 0
+            input_tokens  = fresh + write + read
+            output_tokens = usage.output_tokens or 0
+            p_in, p_out = _PRICING.get(model, _PRICING["claude-sonnet-5-5"])
+            cost = (
+                (fresh + write * _CACHE_WRITE_FACTOR + read * _CACHE_READ_FACTOR) * p_in
+                + output_tokens * p_out
+            ) / 1000.0
+            _insert(model, purpose, input_tokens, output_tokens, cost)
+            return
         if hasattr(usage, "prompt_tokens"):
             input_tokens  = usage.prompt_tokens or 0
             output_tokens = usage.completion_tokens or 0
@@ -113,22 +135,25 @@ def log(model: str, purpose: str, usage: Any) -> None:
         else:
             return
 
-        cost = _compute_cost(model, input_tokens, output_tokens)
-        ts   = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        sid  = getattr(_session, "current", None)
-
-        conn = _connect()
-        _ensure_table(conn)
-        conn.execute(
-            "INSERT INTO api_costs"
-            " (timestamp, model, purpose, input_tokens, output_tokens, cost_usd, session_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (ts, model, purpose, input_tokens, output_tokens, cost, sid),
-        )
-        conn.commit()
-        conn.close()
+        _insert(model, purpose, input_tokens, output_tokens,
+                _compute_cost(model, input_tokens, output_tokens))
     except Exception:
         pass  # cost tracking is non-critical
+
+
+def _insert(model: str, purpose: str, input_tokens: int, output_tokens: int, cost: float) -> None:
+    ts  = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    sid = getattr(_session, "current", None)
+    conn = _connect()
+    _ensure_table(conn)
+    conn.execute(
+        "INSERT INTO api_costs"
+        " (timestamp, model, purpose, input_tokens, output_tokens, cost_usd, session_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (ts, model, purpose, input_tokens, output_tokens, cost, sid),
+    )
+    conn.commit()
+    conn.close()
 
 
 # ── query helpers ─────────────────────────────────────────────────────────────

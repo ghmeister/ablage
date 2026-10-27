@@ -50,6 +50,9 @@ services:
         command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--worker-tmp-dir", "/tmp", "web.app:app"]
         environment:
             - DB_PATH=/data/documents.db
+            - OPENAI_API_KEY=replace-me
+            # Optional: KI-Suche as a Claude agent (multi-step search with tools)
+            # - ANTHROPIC_API_KEY=replace-me
             # Required for category reclassify and file rename features:
             - TENANT_ID=replace-me
             - CLIENT_ID=replace-me
