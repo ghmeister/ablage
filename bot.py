@@ -139,6 +139,9 @@ class AblageBot:
             callback=self.process_graph_item,
             poll_interval=poll_interval,
             skip_existing=True,
+            # Processed files are moved into the archive, so anything still in the
+            # drop zone at startup was never filed (e.g. failed before a restart).
+            process_leftovers=self.classifier is not None,
         )
         _db.init_db()
         print("Document DB initialized.")

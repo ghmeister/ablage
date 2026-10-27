@@ -4,6 +4,7 @@ Generates structured filenames and metadata from PDF content.
 """
 import json
 import os
+import re
 from typing import Optional
 from openai import OpenAI
 import cost_tracker
@@ -106,6 +107,9 @@ class AIRenamer:
             f"                  Parts separated by underscores. Rules:\n"
             f"                  1. Type: German document type (Rechnung, Offerte, Brief, Lohnausweis,\n"
             f"                     Praemienrechnung, Kontoauszug, Vertrag, Garantie, Zeugnis, Befund, etc.)\n"
+            f"                     It must match document_type. 'Befund' is ONLY for medical_report.\n"
+            f"                     Insurance documents use Police, Praemienrechnung, Versicherungsausweis,\n"
+            f"                     Leistungsabrechnung or Versicherungsbestaetigung.\n"
             f"                  2. Company: simplified sender/company name — use the short, commonly known\n"
             f"                     brand name only, drop legal suffixes (GmbH, AG, SA, etc.).\n"
             f"                     Examples: 'Swisscard AECS GmbH' → Swisscard, 'Die Mobiliar' → Mobiliar,\n"
@@ -120,8 +124,13 @@ class AIRenamer:
             f"                     - Subject or product (e.g. Motorfahrzeug, Strom, Hausrat)\n"
             f"                     - Tax year for tax documents\n"
             f"                     Combine multiple details with underscores. Keep it concise.\n"
+            f"                     Use only actual values from the document, never field labels or\n"
+            f"                     placeholders such as 'AHV-Nummer', 'Versicherungs-Nr.' or 'Kundennummer'.\n"
+            f"                     If a value is not readable, leave it out.\n"
+            f"                     NEVER include an AHV/AVS social security number (starts with 756).\n"
             f"                     Omit if Type + Company + Name already describe the document fully.\n"
-            f"                  5. Date: document date as YYYYMMDD (from the document content, NOT the filename)\n"
+            f"                  5. Date: document date as YYYYMMDD (from the document content, NOT the filename).\n"
+            f"                     Must be the same date as the `date` field.\n"
             f"                  Examples: Rechnung_Swisscard_Manuel_20260128\n"
             f"                           Praemienrechnung_Allianz_V955415027_Motorfahrzeug_20251001\n"
             f"                           Lohnausweis_Accenture_Judith_20241231\n"
@@ -168,13 +177,13 @@ class AIRenamer:
             raw = response.choices[0].message.content.strip()
             data = json.loads(raw)
 
+            document_type = str(data.get("document_type") or "other").lower()
             filename = self._sanitize_filename(str(data.get("filename", "") or original_filename))
-            if len(filename) > self.max_filename_length:
-                filename = filename[:self.max_filename_length]
+            filename = finalize_filename(filename, data.get("date"), document_type, self.max_filename_length)
 
             return {
                 "filename": filename or original_filename,
-                "document_type": str(data.get("document_type") or "other").lower(),
+                "document_type": document_type,
                 "date": data.get("date"),
                 "company": data.get("company"),
                 "sender": data.get("sender"),
@@ -277,3 +286,60 @@ class AIRenamer:
         for old, new in replacements.items():
             filename = filename.replace(old, new)
         return filename.strip('_-.')
+
+
+# ── filename post-processing ─────────────────────────────────────────────────
+# The model does not always follow the naming rules, so the most important ones
+# are enforced here.
+
+# Swiss AHV/AVS number: 756.XXXX.XXXX.XX, with or without separators
+_AHV_RE = re.compile(r"(?<!\d)756[.\-]?\d{4}[.\-]?\d{4}[.\-]?\d{2}(?!\d)")
+
+# Field labels the model sometimes writes instead of the actual value
+_PLACEHOLDER_SEGMENTS = {
+    "ahv", "ahv-nr", "ahv-nummer", "ahvnummer", "avs", "sozialversicherungsnummer",
+    "versicherungs-nr", "versicherungsnr", "versicherungsnummer", "police-nr", "policen-nr",
+    "policennummer", "kunden-nr", "kundennummer", "vertrags-nr", "vertragsnummer",
+    "konto-nr", "kontonummer", "iban", "nr", "nummer", "referenz", "referenznummer",
+}
+
+# Type prefixes that only fit medical reports, and the prefix used instead
+_MEDICAL_PREFIXES = {"befund", "arztbericht", "laborbericht", "therapiebericht"}
+_DEFAULT_PREFIX = {
+    "invoice": "Rechnung", "insurance": "Versicherung", "tax": "Steuer",
+    "bank_statement": "Kontoauszug", "contract": "Vertrag", "letter": "Brief",
+    "payslip": "Lohnausweis", "certificate": "Zeugnis", "quote": "Offerte",
+    "donation_receipt": "Spendenbescheinigung", "id_document": "Ausweis",
+}
+
+_DATE_SEGMENT_RE = re.compile(r"^(19|20)\d{6}$")
+
+
+def finalize_filename(filename: str, date: Optional[str], document_type: str, max_length: int) -> str:
+    """Enforce the naming rules the model sometimes breaks.
+
+    - removes AHV numbers and placeholder labels like 'AHV-Nummer'
+    - replaces a medical prefix ('Befund') on non-medical documents
+    - makes the trailing YYYYMMDD equal to the document date
+    - shortens long names without cutting off the date
+    """
+    filename = _AHV_RE.sub("", filename)
+    parts = [p for p in filename.split("_") if p.strip(".-")]
+    parts = [p for p in parts if p.strip(".-").lower() not in _PLACEHOLDER_SEGMENTS]
+
+    if parts and parts[0].lower() in _MEDICAL_PREFIXES and document_type != "medical_report":
+        parts[0] = _DEFAULT_PREFIX.get(document_type, "Dokument")
+
+    date_part = None
+    if date and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(date)):
+        date_part = str(date).replace("-", "")
+    if parts and _DATE_SEGMENT_RE.match(parts[-1]):
+        date_part = date_part or parts[-1]
+        parts = parts[:-1]
+
+    body = "_".join(parts)
+    if date_part:
+        room = max_length - len(date_part) - 1
+        body = body[:max(room, 0)].rstrip("_-.")
+        return f"{body}_{date_part}" if body else date_part
+    return body[:max_length].rstrip("_-.")

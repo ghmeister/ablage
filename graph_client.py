@@ -159,13 +159,20 @@ class GraphClient:
 
         allow_statuses = allow_statuses or set()
         last_error: Optional[str] = None
+        base_headers = kwargs.pop("headers", {}) or {}
 
         for attempt in range(max_retries):
             token = self._acquire_token(force_refresh=attempt > 0)
-            headers = kwargs.pop("headers", {}) or {}
+            headers = dict(base_headers)
             headers.setdefault("Authorization", f"Bearer {token}")
             headers.setdefault("Accept", "application/json")
-            response = self.session.request(method, url, headers=headers, timeout=30, **kwargs)
+            try:
+                response = self.session.request(method, url, headers=headers, timeout=30, **kwargs)
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                # Dropped connection or timeout: wait and try again
+                last_error = f"Connection error: {exc}"
+                time.sleep(2 ** (attempt + 1))
+                continue
 
             # Rate limiting
             if response.status_code == 429:
@@ -268,6 +275,21 @@ class GraphClient:
         """Permanently delete a drive item by its ID."""
         url = f"{self.drive_base}/items/{item_id}"
         self.request("DELETE", url, allow_statuses={204})
+
+    def get_item(self, item_id: str) -> Optional[dict]:
+        """Fetch a drive item by id; None if it no longer exists."""
+        resp = self.request("GET", f"{self.drive_base}/items/{item_id}", allow_statuses={404})
+        return None if resp.status_code == 404 else resp.json()
+
+    def list_children(self, folder_id: str) -> list[dict]:
+        """List the direct children of a folder (all pages)."""
+        items: list[dict] = []
+        next_url: Optional[str] = f"{self.drive_base}/items/{folder_id}/children?$top=200"
+        while next_url:
+            page = self.request("GET", next_url).json()
+            items.extend(page.get("value", []))
+            next_url = page.get("@odata.nextLink")
+        return items
 
     def get_item_by_path(self, path: str) -> dict:
         """Fetch a drive item by its path relative to the drive root."""
