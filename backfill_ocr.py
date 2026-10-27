@@ -30,6 +30,10 @@ Run inside the bot container (it has the Graph and OpenAI settings):
 
 Safe to re-run: documents that now have text are no longer selected.
 
+Repair (vectors of documents whose embedding step failed; no OCR, needs OPENAI_API_KEY):
+    python backfill_ocr.py --repair-from-backup /data/documents.db.bak-<timestamp>          # list
+    python backfill_ocr.py --repair-from-backup /data/documents.db.bak-<timestamp> --apply  # repair
+
 Needs: tesseract-ocr with the 'deu' language data (in the Dockerfile), pymupdf.
 Environment: DB_PATH, TENANT_ID/CLIENT_ID[/CLIENT_SECRET/USER_ID] (or --archive-root),
 OPENAI_API_KEY (not needed with --no-ai), OUTPUT_BASE_FOLDER, TESSERACT_CMD (default 'tesseract'),
@@ -59,9 +63,12 @@ MIN_TEXT = 50          # a stored text at or below this many characters counts a
 OCR_THRESHOLD = 100    # a text layer shorter than this is treated as a scan
 MAX_TEXT_STORE = 10_000  # same limit as index_existing.py
 
+# Identity documents only. Deliberately NOT a bare "ausweis": Lohnausweis, Versicherungsausweis
+# and Gebäudeenergieausweis are ordinary documents.
 _ID_FILENAME = re.compile(
-    r"ausweis|\bpass\b|passport|reisepass|f[uü]hrerschein|fahrausweis|identit[aä]t|id[- ]?karte|"
-    r"\bidk\b|\bid\b|aufenthaltsbewilligung|versichertenkarte|krankenkassenkarte",
+    r"ausl[aä]nderausweis|niederlassungsausweis|personalausweis|identit[aä]tsausweis|sch[uü]lerausweis|"
+    r"lernfahrausweis|fahrausweis|f[uü]hrerausweis|f[uü]hrerschein|reisepass|passeport|passport|\bpass\b|"
+    r"identit[aä]t|id[- ]?karte|\bidk\b|\bid\b|aufenthaltsbewilligung|versichertenkarte|krankenkassenkarte",
     re.IGNORECASE,
 )
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -266,13 +273,35 @@ def write_document(doc_id: int, text: str, fields: dict[str, str]) -> None:
         )
 
 
-def embed_document(doc_id: int, text: str, api_key: str, refresh_doc_vector: bool) -> None:
+def refresh_vectors(doc_id: int, api_key: str) -> None:
+    """Re-chunk from the stored text and replace the document-level vector.
+
+    vec0 tables cannot REPLACE an existing row (INSERT OR REPLACE fails with a UNIQUE error),
+    so the old document vector is deleted first. Idempotent: safe to run again.
+    """
     from embed import build_document_text, chunk_text, get_embedding
-    chunks = chunk_text(text[:MAX_TEXT_STORE])
+    doc = _db.get_document(doc_id)
+    chunks = chunk_text((doc.get("extracted_text") or "")[:MAX_TEXT_STORE])
     _db.store_chunks(doc_id, chunks, [get_embedding(c, api_key) for c in chunks])
-    if refresh_doc_vector:
-        doc = _db.get_document(doc_id)
-        _db.store_embedding(doc_id, get_embedding(build_document_text(doc), api_key))
+    vector = get_embedding(build_document_text(doc), api_key)
+    with _db._conn() as conn:
+        try:
+            conn.execute("DELETE FROM vec_documents WHERE rowid = ?", (doc_id,))
+        except Exception:  # no vec table (sqlite-vec missing) — store_embedding is a no-op then
+            pass
+    _db.store_embedding(doc_id, vector)
+
+
+def ids_gained_text(backup_path: str) -> list[int]:
+    """Ids that had no text in the backup but have text now, i.e. the ones this script filled."""
+    uri = Path(backup_path).resolve().as_uri() + "?mode=ro"
+    with sqlite3.connect(uri, uri=True) as bak:
+        before = {r[0] for r in bak.execute(
+            "SELECT id FROM documents WHERE length(coalesce(extracted_text,'')) <= ?", (MIN_TEXT,))}
+    with _db._conn() as conn:
+        now = {r[0] for r in conn.execute(
+            "SELECT id FROM documents WHERE length(coalesce(extracted_text,'')) > ?", (MIN_TEXT,))}
+    return sorted(before & now)
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +320,9 @@ def main() -> None:
     ap.add_argument("--no-ai", action="store_true", help="OCR + text only: no metadata, no embeddings, no OpenAI")
     ap.add_argument("--no-embed", action="store_true", help="skip chunk embeddings (run backfill_chunks.py later)")
     ap.add_argument("--no-backup", action="store_true", help="do not back up the DB before --apply")
+    ap.add_argument("--repair-from-backup", metavar="BACKUP_DB",
+                    help="no OCR: re-chunk and re-embed the documents that gained text since BACKUP_DB "
+                         "(repairs the vectors of documents whose embedding step failed); lists them without --apply")
     ap.add_argument("--max-pages", type=int, default=10)
     ap.add_argument("--dpi", type=int, default=300)
     ap.add_argument("--lang", default=os.getenv("TESSERACT_LANGS", "deu+eng"))
@@ -301,6 +333,25 @@ def main() -> None:
     _db.init_db()
 
     api_key = os.getenv("OPENAI_API_KEY", "")
+    if args.repair_from_backup:
+        ids = ids_gained_text(args.repair_from_backup)
+        print(f"{'APPLY' if args.apply else 'DRY RUN (nothing is written)'}: "
+              f"{len(ids)} documents gained text since the backup: {ids}")
+        if args.apply:
+            if not api_key:
+                sys.exit("OPENAI_API_KEY not set.")
+            failed = 0
+            for doc_id in ids:
+                try:
+                    refresh_vectors(doc_id, api_key)
+                except Exception as e:
+                    print(f"id={doc_id}: ERROR {e}")
+                    failed += 1
+            print(f"Done: {len(ids) - failed} repaired, {failed} errors.")
+        else:
+            print("Re-run with --apply to repair.")
+        return
+
     renamer = None
     if not args.no_ai:
         if not api_key:
@@ -326,7 +377,7 @@ def main() -> None:
         print("WARNING: no backup (--no-backup).")
 
     fetcher = Fetcher(args)
-    stats = dict(done=0, no_text=0, errors=0, pages=0, text_layer=0, filled=0)
+    stats = dict(done=0, no_text=0, errors=0, embed_errors=0, pages=0, text_layer=0, filled=0)
     for n, doc in enumerate(todo, 1):
         label = f"[{n}/{len(todo)}] id={doc['id']} {doc['new_filename']!r}"
         try:
@@ -342,7 +393,12 @@ def main() -> None:
             if args.apply:
                 write_document(doc["id"], text, fields)
                 if renamer and not args.no_embed:
-                    embed_document(doc["id"], text, api_key, refresh_doc_vector=bool(fields))
+                    try:
+                        refresh_vectors(doc["id"], api_key)
+                    except Exception as e:  # text and fields are saved; only the vectors are missing
+                        print(f"{label}: WARNING text saved, embedding failed: {e}  "
+                              f"(fix later with --repair-from-backup)")
+                        stats["embed_errors"] += 1
             stats["done"] += 1
             stats["text_layer"] += method == "text-layer"
             stats["filled"] += bool(fields)
@@ -353,7 +409,8 @@ def main() -> None:
     print(
         f"\nDone ({'applied' if args.apply else 'dry run'}): {stats['done']} with text "
         f"({stats['text_layer']} from text layer), {stats['filled']} with filled fields, "
-        f"{stats['no_text']} without readable text, {stats['errors']} errors, {stats['pages']} pages."
+        f"{stats['no_text']} without readable text, {stats['errors']} errors, "
+        f"{stats['embed_errors']} embedding warnings, {stats['pages']} pages."
     )
     if not args.apply:
         print("Nothing was written. Re-run with --apply to write.")
