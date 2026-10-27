@@ -8,7 +8,12 @@ a filename-derived title. For each of them this script
   2. extracts text (PDF text layer first, then local Tesseract OCR),
   3. stores it in extracted_text (the FTS index updates itself through the DB triggers),
   4. fills ONLY EMPTY metadata fields (sender, company, recipient, document_date, keywords)
-     from the text via AIRenamer.analyze_document — existing values are never overwritten,
+     from the text via AIRenamer.analyze_document — existing values are never overwritten.
+     Two guards against OCR/model errors:
+       - document_date is only taken if that exact date appears in the OCR text
+         (a date guessed from the filename is dropped, the field stays empty);
+       - recipient is only taken if it is a known person (KNOWN_PERSONS + FAMILY_NAME env,
+         defaults manuel,judith,dominik,clara,nora / Meister); anything else is ignored,
   5. chunks + embeds the text so semantic search finds the document.
 
 Nothing in OneDrive is renamed, moved or deleted. Identity documents (document_type
@@ -70,7 +75,8 @@ def is_id_document(doc: dict) -> bool:
     return doc.get("document_type") == "id_document" or bool(_ID_FILENAME.search(doc.get("new_filename") or ""))
 
 
-def select_documents(limit: int, ids: list[int]) -> list[dict]:
+def select_documents(ids: list[int]) -> list[dict]:
+    """All candidates; --limit is applied by the caller after identity documents are excluded."""
     sql = (
         "SELECT * FROM documents WHERE length(coalesce(extracted_text,'')) <= ? "
         "AND coalesce(onedrive_path,'') != ''"
@@ -80,9 +86,6 @@ def select_documents(limit: int, ids: list[int]) -> list[dict]:
         sql += f" AND id IN ({','.join('?' * len(ids))})"
         params += ids
     sql += " ORDER BY id"
-    if limit:
-        sql += " LIMIT ?"
-        params.append(limit)
     with _db._conn() as conn:
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
@@ -186,12 +189,53 @@ def _valid_date(value: Any) -> bool:
     return 1990 <= d.year <= date.today().year + 1
 
 
-def propose_fields(doc: dict, meta: dict) -> dict[str, str]:
+_MONTHS = {
+    1: ("januar", "jan"), 2: ("februar", "feb"), 3: ("märz", "mär", "mrz"), 4: ("april", "apr"),
+    5: ("mai",), 6: ("juni", "jun"), 7: ("juli", "jul"), 8: ("august", "aug"),
+    9: ("september", "sept", "sep"), 10: ("oktober", "okt"), 11: ("november", "nov"), 12: ("dezember", "dez"),
+}
+
+
+def date_in_text(iso: str, text: str) -> bool:
+    """True if the exact day.month.year appears in the text (12.4.2024, 12.04.24, 2024-04-12, 12. April 2024).
+    The model sometimes guesses a date from the filename; such a date is not in the text and is rejected."""
+    y, m, d = (int(x) for x in iso.split("-"))
+    day, year = f"0?{d}", f"(?:{y}|{y % 100:02d})"
+    months = "|".join(re.escape(n) for n in _MONTHS[m])
+    patterns = [
+        rf"(?<!\d){day}\s*[./]\s*0?{m}\s*[./]\s*{year}(?!\d)",
+        rf"(?<!\d){y}\s*-\s*{m:02d}\s*-\s*{d:02d}(?!\d)",
+        rf"(?<!\d){day}\s*\.?\s*(?:{months})\.?\s*{y}(?!\d)",
+    ]
+    return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+KNOWN_PERSONS = {p.strip().lower() for p in os.getenv("KNOWN_PERSONS", "manuel,judith,dominik,clara,nora").split(",") if p.strip()}
+FAMILY_NAME = os.getenv("FAMILY_NAME", "Meister")
+
+
+def known_recipient(value: Any) -> Optional[str]:
+    """Accept a recipient only if it is a known person: a known first name together with the family name,
+    or a bare known first name (completed with the family name). Misread or foreign names return None."""
+    s = " ".join(str(value or "").split())
+    words = {w.lower() for w in re.findall(r"[A-Za-zÄÖÜäöüß]+", s)}
+    if not words & KNOWN_PERSONS:
+        return None
+    if s.lower() in KNOWN_PERSONS:
+        return f"{s.title()} {FAMILY_NAME}"
+    return s if FAMILY_NAME.lower() in words else None
+
+
+def propose_fields(doc: dict, meta: dict, text: str) -> dict[str, str]:
     out: dict[str, str] = {}
-    for col in ("sender", "company", "recipient"):
+    for col in ("sender", "company"):
         if _empty(doc.get(col)) and not _empty(meta.get(col)):
             out[col] = str(meta[col]).strip()
-    if _empty(doc.get("document_date")) and _valid_date(meta.get("date")):
+    if _empty(doc.get("recipient")):
+        recipient = known_recipient(meta.get("recipient"))
+        if recipient:
+            out["recipient"] = recipient
+    if _empty(doc.get("document_date")) and _valid_date(meta.get("date")) and date_in_text(meta["date"], text):
         out["document_date"] = meta["date"]
     if _empty(doc.get("keywords")) and meta.get("keywords"):
         out["keywords"] = ", ".join(str(k) for k in meta["keywords"])
@@ -264,9 +308,11 @@ def main() -> None:
         from ai_renamer import AIRenamer
         renamer = AIRenamer()
 
-    docs = select_documents(args.limit, args.ids)
+    docs = select_documents(args.ids)
     skipped_ids = [d for d in docs if not args.include_ids and is_id_document(d)]
     todo = [d for d in docs if d not in skipped_ids]
+    if args.limit:
+        todo = todo[:args.limit]  # limit counts only documents that will actually be processed
     mode = "APPLY" if args.apply else "DRY RUN (nothing is written)"
     print(f"{mode}: {len(todo)} documents to OCR, {len(skipped_ids)} identity documents skipped.")
     for d in skipped_ids:
@@ -290,7 +336,7 @@ def main() -> None:
                 print(f"{label}: no readable text ({pages} p.)")
                 stats["no_text"] += 1
                 continue
-            fields = propose_fields(doc, renamer.analyze_document(text, doc["new_filename"])) if renamer else {}
+            fields = propose_fields(doc, renamer.analyze_document(text, doc["new_filename"]), text) if renamer else {}
             print(f"{label}: {method}, {pages} p., {len(text)} chars"
                   + (f" -> fill {', '.join(f'{k}={v!r}' for k, v in fields.items())}" if fields else ""))
             if args.apply:
