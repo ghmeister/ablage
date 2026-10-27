@@ -13,9 +13,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install runtime dependencies + gosu for privilege drop in entrypoint
+# Install runtime dependencies + gosu for privilege drop in entrypoint;
+# Tesseract (deu+eng) is used by backfill_ocr.py
 COPY requirements.txt ./
-RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+RUN apt-get update && apt-get install -y --no-install-recommends gosu tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir -r requirements.txt
 
