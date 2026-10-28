@@ -30,6 +30,7 @@ _PRICING: dict[str, tuple[float, float]] = {
     "text-embedding-3-small": (0.00002, 0.0),
     # Claude (KI-Suche); server-side fallbacks may answer with an Opus model
     "claude-sonnet-5-5":      (0.002,   0.010),
+    "claude-haiku-5-5":       (0.0001,  0.0005),  # prompts up to 100K tokens (above: 0.0005 / 0.0025)
     "claude-opus-5-5":        (0.004,   0.020),
     "claude-opus-5":          (0.005,   0.025),
     "claude-opus-4-8":        (0.005,   0.025),
@@ -38,6 +39,8 @@ _PRICING: dict[str, tuple[float, float]] = {
 # Anthropic prompt caching: cache writes cost 1.25x, cache reads 0.1x the input price
 _CACHE_WRITE_FACTOR = 1.25
 _CACHE_READ_FACTOR = 0.1
+# Cache hits cost 0.05x on Opus 5.5 and Sonnet 5.5 (pricing page, 2026-10-28)
+_CACHE_READ_FACTORS = {"claude-opus-5-5": 0.05, "claude-sonnet-5-5": 0.05}
 
 _session = threading.local()
 
@@ -120,8 +123,9 @@ def log(model: str, purpose: str, usage: Any) -> None:
             input_tokens  = fresh + write + read
             output_tokens = usage.output_tokens or 0
             p_in, p_out = _PRICING.get(model, _PRICING["claude-sonnet-5-5"])
+            read_factor = _CACHE_READ_FACTORS.get(model, _CACHE_READ_FACTOR)
             cost = (
-                (fresh + write * _CACHE_WRITE_FACTOR + read * _CACHE_READ_FACTOR) * p_in
+                (fresh + write * _CACHE_WRITE_FACTOR + read * read_factor) * p_in
                 + output_tokens * p_out
             ) / 1000.0
             _insert(model, purpose, input_tokens, output_tokens, cost)

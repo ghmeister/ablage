@@ -20,6 +20,13 @@ from typing import Any, Callable
 import config_store
 
 MODEL = os.getenv("KI_MODEL", "claude-sonnet-5-5")
+
+# Server-side refusal fallback is not available for Haiku models; sending it there may be rejected.
+_FALLBACK_ARGS: dict = (
+    {}
+    if "haiku" in MODEL
+    else {"betas": ["server-side-fallback-2026-07-01"], "extra_body": {"fallbacks": "default"}}
+)
 MAX_ROUNDS = 8            # tool rounds before the agent must answer
 DEADLINE_SECONDS = 90     # stay below gunicorn's 120 s worker timeout
 MAX_HISTORY = 10
@@ -415,8 +422,7 @@ def run(question: str, anthropic_api_key: str, openai_api_key: str, db: Any,
             messages=messages,
             output_config={"effort": "medium"},
             cache_control={"type": "ephemeral"},
-            betas=["server-side-fallback-2026-07-01"],
-            extra_body={"fallbacks": "default"},
+            **_FALLBACK_ARGS,
         )
         _log_cost(response)
 
