@@ -9,9 +9,10 @@ a filename-derived title. For each of them this script
   3. stores it in extracted_text (the FTS index updates itself through the DB triggers),
   4. fills ONLY EMPTY metadata fields (sender, company, recipient, document_date, keywords)
      from the text via AIRenamer.analyze_document — existing values are never overwritten.
-     Two guards against OCR/model errors:
-       - document_date is only taken if that exact date appears in the OCR text
-         (a date guessed from the filename is dropped, the field stays empty);
+     Guards against OCR/model errors:
+       - a complete date written in the filename (d.m.yy, YYYYMMDD, YYYY-MM-DD) is taken first;
+       - otherwise document_date is only taken if the model's date appears in the OCR text
+         (a date guessed from the filename's year is dropped, the field stays empty);
        - recipient is only taken if it is a known person (KNOWN_PERSONS + FAMILY_NAME env,
          defaults manuel,judith,dominik,clara,nora / Meister); anything else is ignored,
   5. chunks + embeds the text so semantic search finds the document.
@@ -233,6 +234,26 @@ def known_recipient(value: Any) -> Optional[str]:
     return s if FAMILY_NAME.lower() in words else None
 
 
+_FN_YMD = re.compile(r"(?<!\d)((?:19|20)\d{2})[-.]?(0[1-9]|1[0-2])[-.]?(0[1-9]|[12]\d|3[01])(?!\d)")  # 20210108, 2021-11-26
+_FN_DMY = re.compile(r"(?<![\d.])(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)")                          # 12.4.24, 09.09.2021
+
+
+def date_from_filename(name: str) -> Optional[str]:
+    """The document date written in a filename, as YYYY-MM-DD, or None.
+
+    Recognises YYYYMMDD / YYYY-MM-DD and d.m.yy / d.m.yyyy. Only a complete, valid date counts
+    (a bare year or YYYY-MM does not), and if the name holds more than one different date it is
+    ambiguous and None is returned. Long numbers (policy numbers) are not mistaken for dates.
+    """
+    found: set[str] = set()
+    for y, m, d in _FN_YMD.findall(name or ""):
+        found.add(f"{y}-{m}-{d}")
+    for d, m, y in _FN_DMY.findall(name or ""):
+        found.add(f"{2000 + int(y) if len(y) == 2 else int(y):04d}-{int(m):02d}-{int(d):02d}")
+    valid = {d for d in found if _valid_date(d)}
+    return valid.pop() if len(valid) == 1 and len(found) == 1 else None
+
+
 def propose_fields(doc: dict, meta: dict, text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for col in ("sender", "company"):
@@ -242,8 +263,13 @@ def propose_fields(doc: dict, meta: dict, text: str) -> dict[str, str]:
         recipient = known_recipient(meta.get("recipient"))
         if recipient:
             out["recipient"] = recipient
-    if _empty(doc.get("document_date")) and _valid_date(meta.get("date")) and date_in_text(meta["date"], text):
-        out["document_date"] = meta["date"]
+    if _empty(doc.get("document_date")):
+        # a date written in the filename wins; otherwise the model's date, but only if it is in the text
+        from_name = date_from_filename(doc.get("new_filename") or "")
+        if from_name:
+            out["document_date"] = from_name
+        elif _valid_date(meta.get("date")) and date_in_text(meta["date"], text):
+            out["document_date"] = meta["date"]
     if _empty(doc.get("keywords")) and meta.get("keywords"):
         out["keywords"] = ", ".join(str(k) for k in meta["keywords"])
     return out
@@ -271,6 +297,39 @@ def write_document(doc_id: int, text: str, fields: dict[str, str]) -> None:
             f"UPDATE documents SET {', '.join(f'{k} = ?' for k in cols)} WHERE id = ?",
             [*cols.values(), doc_id],
         )
+
+
+def set_date(doc_id: int, value: str) -> None:
+    """Set document_date only while it is still empty (never overwrites)."""
+    with _db._conn() as conn:
+        conn.execute(
+            "UPDATE documents SET document_date = ? WHERE id = ? AND coalesce(document_date,'') = ''",
+            (value, doc_id),
+        )
+
+
+def fill_dates_from_filenames(args: argparse.Namespace) -> None:
+    """No OCR, no OpenAI: set an empty document_date from a date written in the filename."""
+    with _db._conn() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT id, new_filename, document_type FROM documents WHERE coalesce(document_date,'') = '' ORDER BY id")]
+    todo = []
+    for r in rows:
+        value = date_from_filename(r["new_filename"] or "")
+        if value and (args.include_ids or not is_id_document(r)):
+            todo.append((r["id"], r["new_filename"], value))
+    print(f"{'APPLY' if args.apply else 'DRY RUN (nothing is written)'}: {len(todo)} of {len(rows)} documents "
+          f"without a date have a date in the filename.")
+    for doc_id, name, value in todo:
+        print(f"  id={doc_id} {name!r} -> {value}")
+    if not args.apply:
+        print("Re-run with --apply to write.")
+        return
+    if todo and not args.no_backup:
+        print(f"Backup written: {backup_db()}")
+    for doc_id, _, value in todo:
+        set_date(doc_id, value)
+    print(f"Done: {len(todo)} dates set.")
 
 
 def refresh_vectors(doc_id: int, api_key: str) -> None:
@@ -323,6 +382,9 @@ def main() -> None:
     ap.add_argument("--repair-from-backup", metavar="BACKUP_DB",
                     help="no OCR: re-chunk and re-embed the documents that gained text since BACKUP_DB "
                          "(repairs the vectors of documents whose embedding step failed); lists them without --apply")
+    ap.add_argument("--dates-from-filenames", action="store_true",
+                    help="no OCR: set an empty document_date from a date in the filename (d.m.yy, YYYYMMDD, ...) "
+                         "for ALL documents; lists them without --apply")
     ap.add_argument("--max-pages", type=int, default=10)
     ap.add_argument("--dpi", type=int, default=300)
     ap.add_argument("--lang", default=os.getenv("TESSERACT_LANGS", "deu+eng"))
@@ -331,6 +393,10 @@ def main() -> None:
     if args.db:
         _db.set_db_path(args.db)
     _db.init_db()
+
+    if args.dates_from_filenames:
+        fill_dates_from_filenames(args)
+        return
 
     api_key = os.getenv("OPENAI_API_KEY", "")
     if args.repair_from_backup:
@@ -384,10 +450,14 @@ def main() -> None:
             text, pages, method = extract_text(fetcher.fetch(doc["onedrive_path"]), args)
             stats["pages"] += pages
             if len(text) <= MIN_TEXT:
-                print(f"{label}: no readable text ({pages} p.)")
+                from_name = date_from_filename(doc["new_filename"] or "") if _empty(doc.get("document_date")) else None
+                print(f"{label}: no readable text ({pages} p.)" + (f" -> date from filename {from_name}" if from_name else ""))
+                if from_name and args.apply:
+                    set_date(doc["id"], from_name)
                 stats["no_text"] += 1
                 continue
-            fields = propose_fields(doc, renamer.analyze_document(text, doc["new_filename"]), text) if renamer else {}
+            meta = renamer.analyze_document(text, doc["new_filename"]) if renamer else {}
+            fields = propose_fields(doc, meta, text)  # with --no-ai only the filename date can apply
             print(f"{label}: {method}, {pages} p., {len(text)} chars"
                   + (f" -> fill {', '.join(f'{k}={v!r}' for k, v in fields.items())}" if fields else ""))
             if args.apply:
