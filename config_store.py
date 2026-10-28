@@ -40,6 +40,14 @@ def expand_sender(value: str) -> list[str]:
     return [value]
 
 
+def canonical_sender(sender: str | None, company: str | None) -> str | None:
+    """Short name of the sender group for a new document, or None if no group fits."""
+    try:
+        return _db.canonical_sender(sender, company, sender_groups())
+    except Exception:
+        return None
+
+
 def expand_person(value: str) -> list[str]:
     """All spellings for a recipient filter that names a person (or one of the variants)."""
     v = value.strip().lower()

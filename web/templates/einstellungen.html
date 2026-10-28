@@ -114,7 +114,9 @@
   <p class="set-help">
     Fasst verschiedene Schreibweisen eines Absenders zusammen. Der Name ist der Kurzname für Dateinamen und Suche
     (z. B. „Mobiliar“ für „Die Mobiliar“). Suchbegriffe sind Wörter, mit denen du in der KI-Suche nach diesem Absender
-    fragst (z. B. „Strom“ → BKW). Die Zahl unter dem Namen zeigt, wie viele Dokumente die Gruppe erfasst.
+    fragst (z. B. „Strom“ → BKW). Ein Absender gehört zur Gruppe, wenn er mit dem Namen oder einer Schreibweise
+    beginnt („Allianz Suisse AG“ → Allianz); andere Formen als Schreibweise ergänzen, z. B. „Die Mobiliar“.
+    Die Zahl unter dem Namen zeigt, wie viele Dokumente die Gruppe erfasst.
   </p>
   <input type="search" class="form-control form-control-sm mb-2" id="groupFilter" placeholder="Gruppen filtern …"
          style="max-width:260px" oninput="renderGroups()">
@@ -135,6 +137,22 @@
   </p>
   <div id="unassignedList"></div>
   <button class="btn btn-link btn-sm px-0" type="button" id="unassignedMore" onclick="unassignedLimit += 30; renderUnassigned()" hidden>Mehr anzeigen</button>
+</section>
+
+<!-- ── Absender vereinheitlichen ──────────────────────────────────── -->
+<section class="set-card">
+  <h2>🧹 Absender vereinheitlichen</h2>
+  <p class="set-help">
+    Setzt bei bereits abgelegten Dokumenten den Absender auf den Kurznamen der passenden Gruppe, z. B.
+    „Allianz Suisse Lebensversicherungs-Gesellschaft AG“ → „Allianz“. Der ursprüngliche Name bleibt gespeichert.
+    Dateien werden nicht umbenannt. Neue Dokumente bekommen den Kurznamen automatisch.
+  </p>
+  <div id="normalizeList"></div>
+  <div class="save-bar mt-0">
+    <button class="btn btn-outline-secondary btn-sm" type="button" id="normalizePreview" onclick="previewNormalize()">Vorschau anzeigen</button>
+    <button class="btn btn-primary btn-sm" type="button" id="normalizeApply" onclick="applyNormalize()" hidden>Übernehmen</button>
+    <span class="save-state" id="normalizeState"></span>
+  </div>
 </section>
 
 <!-- ── Import / Export ────────────────────────────────────────────── -->
@@ -304,9 +322,13 @@ function addGroup(name) {
 }
 
 /* ── senders without a group ───────────────────────────────────────── */
+// Same rule as match_sender_group() in db.py: the sender equals a spelling or starts with it
 function isCovered(senderName) {
-  const low = senderName.toLowerCase();
-  return groups.some(g => [g.name, ...g.variants].some(t => t && low.includes(t.toLowerCase())));
+  const low = senderName.replace(/\s+/g, ' ').trim().toLowerCase();
+  return groups.some(g => [g.name, ...g.variants].some(t => {
+    t = (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    return t && low.startsWith(t) && !/[\p{L}\p{N}_]/u.test(low.charAt(t.length));
+  }));
 }
 
 function renderUnassigned() {
@@ -391,6 +413,60 @@ function importYaml() {
                             `${s.groups_added} neue / ${s.groups_updated} ergänzte Gruppen ✓`);
     })
     .catch(e => setState('yamlState', e.message, 'error'));
+}
+
+/* ── normalize document senders ────────────────────────────────────── */
+function previewNormalize() {
+  if (groupsDirty) {
+    setState('normalizeState', 'Bitte zuerst die Gruppen speichern.', 'error');
+    return;
+  }
+  const list = document.getElementById('normalizeList');
+  const applyBtn = document.getElementById('normalizeApply');
+  setState('normalizeState', 'Wird berechnet …');
+  fetch('/api/settings/normalize-senders').then(r => r.json()).then(data => {
+    list.innerHTML = '';
+    applyBtn.hidden = !data.total;
+    if (!data.total) {
+      setState('normalizeState', 'Alle Absender entsprechen bereits ihren Gruppen. 🎉');
+      return;
+    }
+    data.changes.forEach(c => {
+      const item = document.createElement('label');
+      item.className = 'unassigned-item';
+      item.innerHTML = `<input type="checkbox" class="form-check-input mt-0" checked>
+        <span class="u-name">${escHtml(c.old)} → <strong>${escHtml(c.new)}</strong></span>
+        <span class="u-count">${c.count} Dok.</span>`;
+      item.querySelector('input').change = c;
+      list.appendChild(item);
+    });
+    setState('normalizeState', `${data.total} Dokumente würden geändert. Falsche Zuordnungen abwählen.`);
+  }).catch(e => setState('normalizeState', e.message, 'error'));
+}
+
+function applyNormalize() {
+  const btn = document.getElementById('normalizeApply');
+  if (groupsDirty) {
+    setState('normalizeState', 'Bitte zuerst die Gruppen speichern.', 'error');
+    return;
+  }
+  const changes = [...document.querySelectorAll('#normalizeList input:checked')]
+    .map(cb => ({old: cb.change.old, new: cb.change.new}));
+  if (!changes.length) {
+    setState('normalizeState', 'Nichts ausgewählt.', 'error');
+    return;
+  }
+  if (!confirm(`Absender von ${changes.length} Zuordnungen jetzt auf den Gruppennamen setzen?`)) return;
+  btn.disabled = true;
+  postJson('/api/settings/normalize-senders', {changes})
+    .then(data => {
+      applyPayload(data, 'groups');  // keeps unsaved person edits
+      document.getElementById('normalizeList').innerHTML = '';
+      btn.hidden = true;
+      setState('normalizeState', `${data.changed} Dokumente aktualisiert ✓`);
+    })
+    .catch(e => setState('normalizeState', e.message, 'error'))
+    .finally(() => { btn.disabled = false; });
 }
 
 function exportYaml() {

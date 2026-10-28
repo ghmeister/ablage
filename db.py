@@ -206,6 +206,8 @@ def init_db() -> None:
             "ALTER TABLE documents ADD COLUMN email_message_id TEXT",
             "ALTER TABLE documents ADD COLUMN seen INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE documents ADD COLUMN content_hash TEXT",
+            # Sender as found on the document, kept when sender is set to a group's short name
+            "ALTER TABLE documents ADD COLUMN sender_original TEXT",
         ]:
             try:
                 conn.execute(migration)
@@ -309,6 +311,7 @@ def insert_document(
     email_date: Optional[str] = None,
     email_message_id: Optional[str] = None,
     content_hash: Optional[str] = None,
+    sender_original: Optional[str] = None,
 ) -> int:
     """Insert a document record and return the new row id."""
     ts = scan_timestamp or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -320,14 +323,14 @@ def insert_document(
                  onedrive_path, document_type, document_date, sender, recipient,
                  company, keywords, extracted_text, matched_rule, tax_relevant,
                  email_source, email_from, email_subject, email_date, email_message_id,
-                 content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 content_hash, sender_original)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (ts, original_filename, new_filename, destination_folder,
              onedrive_path, document_type, document_date, sender, recipient,
              company, keywords, extracted_text, matched_rule, tax_relevant,
              email_source, email_from, email_subject, email_date, email_message_id,
-             content_hash),
+             content_hash, sender_original),
         )
         return cur.lastrowid
 
@@ -1066,3 +1069,92 @@ def sender_name_counts() -> list[tuple[str, int]]:
             "WHERE n IS NOT NULL GROUP BY n ORDER BY 2 DESC"
         ).fetchall()
     return [(r[0], r[1]) for r in rows]
+
+
+# ── Sender names → group short names ──────────────────────────────────────────
+
+def _starts_with_term(text: str, term: str) -> bool:
+    """True if text begins with term as whole word(s), case-insensitive.
+
+    Only the start counts: "Allianz Suisse AG" belongs to Allianz, but "Raiffeisenbank Bern"
+    does not belong to Bern. Other spellings are added to the group as variants.
+    """
+    import re
+    return re.match(rf"{re.escape(term)}(?!\w)", text, re.IGNORECASE) is not None
+
+
+def match_sender_group(value: Optional[str], groups: list[dict]) -> Optional[str]:
+    """Short name of the sender group that value belongs to, or None.
+
+    Value must equal the group name or one of its spellings, or start with one
+    ("Allianz Suisse Lebensversicherungs-Gesellschaft AG" → Allianz). An exact spelling
+    wins, then the longest one. If two groups match equally well, None is returned.
+    """
+    v = " ".join(str(value or "").split())
+    if not v:
+        return None
+    best: dict[str, int] = {}  # group name → score
+    for g in groups:
+        for t in [g["name"], *(g.get("variants") or [])]:
+            t = " ".join(t.split())
+            if not t:
+                continue
+            if t.lower() == v.lower():
+                score = 10_000 + len(t)
+            elif _starts_with_term(v, t):
+                score = len(t)
+            else:
+                continue
+            best[g["name"]] = max(best.get(g["name"], 0), score)
+    if not best:
+        return None
+    ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        return None
+    return ranked[0][0]
+
+
+def canonical_sender(sender: Optional[str], company: Optional[str], groups: list[dict]) -> Optional[str]:
+    """Group short name for a document, from its sender, else its company."""
+    return match_sender_group(sender, groups) or match_sender_group(company, groups)
+
+
+def sender_normalization_plan(groups: Optional[list[dict]] = None) -> list[dict]:
+    """Documents whose sender would change to a group short name, grouped by old → new."""
+    groups = get_sender_groups() if groups is None else groups
+    plan: dict[tuple[str, str], dict] = {}
+    with _conn() as conn:
+        rows = conn.execute("SELECT id, sender, company FROM documents").fetchall()
+    for r in rows:
+        new = canonical_sender(r["sender"], r["company"], groups)
+        old = r["sender"] or ""
+        if not new or new == old:
+            continue
+        key = (old, new)
+        entry = plan.setdefault(key, {"old": old or f"(leer, Firma: {r['company']})", "new": new, "ids": []})
+        entry["ids"].append(r["id"])
+    return sorted(plan.values(), key=lambda e: (e["new"].lower(), -len(e["ids"])))
+
+
+def apply_sender_normalization(
+    groups: Optional[list[dict]] = None, only: Optional[list[tuple[str, str]]] = None
+) -> int:
+    """Set sender to the group short name; the old value goes to sender_original once.
+
+    only: (old, new) pairs from the preview to apply; None applies all.
+    """
+    plan = sender_normalization_plan(groups)
+    if only is not None:
+        selected = set(only)
+        plan = [e for e in plan if (e["old"], e["new"]) in selected]
+    changed = 0
+    with _conn() as conn:
+        for entry in plan:
+            for doc_id in entry["ids"]:
+                conn.execute(
+                    "UPDATE documents SET sender_original = COALESCE(sender_original, sender), sender = ? "
+                    "WHERE id = ?",
+                    (entry["new"], doc_id),
+                )
+                changed += 1
+    return changed

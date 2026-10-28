@@ -378,13 +378,10 @@ def _settings_payload() -> dict:
     hits: dict[str, int] = {}
     unassigned = []
     for name, count in db_module.sender_name_counts():
-        low = name.lower()
-        matched = False
-        for g in groups:
-            if any(t.lower() in low for t in [g["name"], *g["variants"]]):
-                hits[g["name"]] = hits.get(g["name"], 0) + count
-                matched = True
-        if not matched:
+        group = db_module.match_sender_group(name, groups)
+        if group:
+            hits[group] = hits.get(group, 0) + count
+        else:
             unassigned.append({"name": name, "count": count})
     for g in groups:
         g["document_count"] = hits.get(g["name"], 0)
@@ -429,6 +426,24 @@ def settings_import():
     except Exception as e:  # YAML syntax errors included
         return jsonify({"error": str(e)}), 400
     return jsonify({"imported": stats, **_settings_payload()})
+
+
+@app.route("/api/settings/normalize-senders")
+def settings_normalize_preview():
+    """Which document senders would change to their group's short name."""
+    plan = db_module.sender_normalization_plan()
+    return jsonify({
+        "total": sum(len(e["ids"]) for e in plan),
+        "changes": [{"old": e["old"], "new": e["new"], "count": len(e["ids"])} for e in plan],
+    })
+
+
+@app.route("/api/settings/normalize-senders", methods=["POST"])
+def settings_normalize_apply():
+    data = request.get_json() or {}
+    only = [(str(c.get("old", "")), str(c.get("new", ""))) for c in data.get("changes") or []]
+    changed = db_module.apply_sender_normalization(only=only)
+    return jsonify({"changed": changed, **_settings_payload()})
 
 
 @app.route("/api/settings/export")

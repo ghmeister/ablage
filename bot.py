@@ -21,6 +21,7 @@ from folder_monitor import OneDriveDeltaMonitor
 from graph_client import GraphClient
 from pdf_extractor import PDFExtractor
 from telegram_bot import TelegramBot
+import config_store
 import db as _db
 
 _MAX_TEXT_STORE = 10_000  # characters to store in DB for full-text search
@@ -229,6 +230,14 @@ class AblageBot:
         # so it stays consistent with backfill-indexed documents
         db_folder = rel_path if self.classifier else display_path
 
+        # Sender as the short name of its group (Einstellungen), so the archive uses one name
+        # per sender; the name as found on the document is kept in sender_original.
+        found_sender = metadata.get("sender")
+        group_sender = config_store.canonical_sender(found_sender, metadata.get("company"))
+        if group_sender and group_sender != found_sender:
+            metadata["sender"] = group_sender
+            print(f"Sender    : {found_sender or '–'} → {group_sender}")
+
         # Write to document index
         try:
             new_doc_id = _db.insert_document(
@@ -251,6 +260,7 @@ class AblageBot:
                 email_date=email_context.get("date") if email_context else None,
                 email_message_id="".join(email_context.get("message_id", "").split()).strip("<>") if email_context else None,
                 content_hash=content_hash,
+                sender_original=found_sender if metadata.get("sender") != found_sender else None,
             )
             cost_tracker.tag_session(_cost_session, new_doc_id)
             print(f"Indexed   : {final_name}")
