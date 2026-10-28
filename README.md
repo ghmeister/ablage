@@ -243,6 +243,8 @@ This embeds all existing documents for semantic and NL search (~$0.01 per 500 do
 | `OPENAI_API_KEY` | ✓ | Required for NL search in the web UI (and for semantic search inside the Claude agent) |
 | `ANTHROPIC_API_KEY` | — | Turns the KI-Suche into a Claude agent with multi-step search |
 | `KI_MODEL` | — | Claude model for the agent, default `claude-sonnet-5-5` |
+| `MAX_PAGES` | — | Pages read per PDF by the bot, default `10` |
+| `MAX_TEXT_STORE` | — | Characters of PDF text stored per document, default `10000`. Raise together with `MAX_PAGES` for long PDFs; for documents already in the DB use `python reextract_full.py` |
 | `TENANT_ID` / `CLIENT_ID` | — | Required for reclassify, rename, and upload features |
 | `SOURCE_FOLDER_ID` | — | Drop zone folder ID — required for the document upload feature |
 | `MAX_UPLOAD_MB` | — | Max size per uploaded file, default 25 |

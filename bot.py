@@ -24,7 +24,7 @@ from telegram_bot import TelegramBot
 import config_store
 import db as _db
 
-_MAX_TEXT_STORE = 10_000  # characters to store in DB for full-text search
+_MAX_TEXT_STORE = int(os.getenv("MAX_TEXT_STORE", "10000"))  # characters to store in DB for full-text search (raise together with MAX_PAGES for long PDFs)
 _STATUS_FILE = Path(os.getenv("DB_PATH", "/data/documents.db")).parent / "bot_status.json"
 _LOG_FILE    = Path(os.getenv("DB_PATH", "/data/documents.db")).parent / "bot.log"
 

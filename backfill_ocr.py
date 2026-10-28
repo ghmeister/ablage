@@ -382,7 +382,7 @@ def fill_dates_from_filenames(args: argparse.Namespace) -> None:
     print(f"Done: {len(todo)} dates set.")
 
 
-def refresh_vectors(doc_id: int, api_key: str) -> None:
+def refresh_vectors(doc_id: int, api_key: str, max_chars: int = MAX_TEXT_STORE) -> None:
     """Re-chunk from the stored text and replace the document-level vector.
 
     vec0 tables cannot REPLACE an existing row (INSERT OR REPLACE fails with a UNIQUE error),
@@ -390,7 +390,7 @@ def refresh_vectors(doc_id: int, api_key: str) -> None:
     """
     from embed import build_document_text, chunk_text, get_embedding
     doc = _db.get_document(doc_id)
-    chunks = chunk_text((doc.get("extracted_text") or "")[:MAX_TEXT_STORE])
+    chunks = chunk_text((doc.get("extracted_text") or "")[:max_chars])
     _db.store_chunks(doc_id, chunks, [get_embedding(c, api_key) for c in chunks])
     vector = get_embedding(build_document_text(doc), api_key)
     with _db._conn() as conn:
