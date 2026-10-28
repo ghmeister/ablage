@@ -90,7 +90,7 @@ def _main() -> None:
     except ImportError:
         iterator = pdf_files
 
-    _MAX_TEXT_STORE = 10_000
+    _MAX_TEXT_STORE = int(os.getenv("MAX_TEXT_STORE", "10000"))
     processed = skipped = errors = 0
 
     for pdf_path in iterator:
