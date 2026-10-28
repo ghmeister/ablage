@@ -39,6 +39,8 @@ _PRICING: dict[str, tuple[float, float]] = {
 # Anthropic prompt caching: cache writes cost 1.25x, cache reads 0.1x the input price
 _CACHE_WRITE_FACTOR = 1.25
 _CACHE_READ_FACTOR = 0.1
+# Cache hits cost 0.05x on Opus 5.5 and Sonnet 5.5 (pricing page, 2026-10-28)
+_CACHE_READ_FACTORS = {"claude-opus-5-5": 0.05, "claude-sonnet-5-5": 0.05}
 
 _session = threading.local()
 
@@ -121,8 +123,9 @@ def log(model: str, purpose: str, usage: Any) -> None:
             input_tokens  = fresh + write + read
             output_tokens = usage.output_tokens or 0
             p_in, p_out = _PRICING.get(model, _PRICING["claude-sonnet-5-5"])
+            read_factor = _CACHE_READ_FACTORS.get(model, _CACHE_READ_FACTOR)
             cost = (
-                (fresh + write * _CACHE_WRITE_FACTOR + read * _CACHE_READ_FACTOR) * p_in
+                (fresh + write * _CACHE_WRITE_FACTOR + read * read_factor) * p_in
                 + output_tokens * p_out
             ) / 1000.0
             _insert(model, purpose, input_tokens, output_tokens, cost)
