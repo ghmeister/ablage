@@ -287,6 +287,27 @@ def backup_db() -> Path:
     return dst
 
 
+def _missing_file() -> Path:
+    src = _db._get_db_path()
+    return src.with_name(f"{src.name}.missing-ids.txt")
+
+
+def load_missing() -> set[int]:
+    """Ids whose PDF was not found at the stored path in an earlier --apply run."""
+    try:
+        return {int(x) for x in _missing_file().read_text(encoding="utf-8").split() if x.isdigit()}
+    except FileNotFoundError:
+        return set()
+
+
+def save_missing(ids: set[int]) -> None:
+    _missing_file().write_text("\n".join(str(i) for i in sorted(ids)) + "\n", encoding="utf-8")
+
+
+def is_missing_error(e: Exception) -> bool:
+    return isinstance(e, FileNotFoundError) or "Graph error 404" in str(e)
+
+
 def write_document(doc_id: int, text: str, fields: dict[str, str]) -> None:
     """Update only the columns we own. The FTS table follows through the UPDATE trigger."""
     cols = {"extracted_text": text[:MAX_TEXT_STORE], **fields}
@@ -385,6 +406,9 @@ def main() -> None:
     ap.add_argument("--dates-from-filenames", action="store_true",
                     help="no OCR: set an empty document_date from a date in the filename (d.m.yy, YYYYMMDD, ...) "
                          "for ALL documents; lists them without --apply")
+    ap.add_argument("--retry-missing", action="store_true",
+                    help="also retry documents whose PDF was not found (404) in an earlier --apply run "
+                         "(they are otherwise skipped; list kept in <db>.missing-ids.txt)")
     ap.add_argument("--max-pages", type=int, default=10)
     ap.add_argument("--dpi", type=int, default=300)
     ap.add_argument("--lang", default=os.getenv("TESSERACT_LANGS", "deu+eng"))
@@ -427,11 +451,15 @@ def main() -> None:
 
     docs = select_documents(args.ids)
     skipped_ids = [d for d in docs if not args.include_ids and is_id_document(d)]
-    todo = [d for d in docs if d not in skipped_ids]
+    missing = set() if args.retry_missing else load_missing()
+    skipped_missing = [d for d in docs if d["id"] in missing and d not in skipped_ids]
+    todo = [d for d in docs if d not in skipped_ids and d not in skipped_missing]
     if args.limit:
         todo = todo[:args.limit]  # limit counts only documents that will actually be processed
     mode = "APPLY" if args.apply else "DRY RUN (nothing is written)"
-    print(f"{mode}: {len(todo)} documents to OCR, {len(skipped_ids)} identity documents skipped.")
+    print(f"{mode}: {len(todo)} documents to OCR, {len(skipped_ids)} identity documents skipped"
+          + (f", {len(skipped_missing)} skipped as not found earlier (--retry-missing to retry)" if skipped_missing else "")
+          + ".")
     for d in skipped_ids:
         print(f"  skip id={d['id']} {d['new_filename']!r}")
     if not todo:
@@ -444,6 +472,7 @@ def main() -> None:
 
     fetcher = Fetcher(args)
     stats = dict(done=0, no_text=0, errors=0, embed_errors=0, pages=0, text_layer=0, filled=0)
+    newly_missing: set[int] = set()
     for n, doc in enumerate(todo, 1):
         label = f"[{n}/{len(todo)}] id={doc['id']} {doc['new_filename']!r}"
         try:
@@ -475,7 +504,15 @@ def main() -> None:
         except Exception as e:  # keep going; one bad PDF must not stop the batch
             print(f"{label}: ERROR {e}")
             stats["errors"] += 1
+            if is_missing_error(e):
+                newly_missing.add(doc["id"])
 
+    if newly_missing and args.apply:
+        save_missing(load_missing() | newly_missing)
+    if newly_missing:
+        print(f"\nPDF not found at the stored OneDrive path: {sorted(newly_missing)}"
+              + (f" (recorded in {_missing_file()}; skipped from now on)" if args.apply else
+                 " (will be recorded and skipped after an --apply run)"))
     print(
         f"\nDone ({'applied' if args.apply else 'dry run'}): {stats['done']} with text "
         f"({stats['text_layer']} from text layer), {stats['filled']} with filled fields, "
