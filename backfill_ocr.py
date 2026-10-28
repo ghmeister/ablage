@@ -112,10 +112,15 @@ class Fetcher:
     def __init__(self, args: argparse.Namespace) -> None:
         self.prefix = _prefix(args)
         self.root = Path(args.archive_root) if args.archive_root else None
+        # Like the web UI: a mounted ARCHIVE_ROOT is tried first, Graph is the fallback.
+        env_root = os.getenv("ARCHIVE_ROOT", "").strip()
+        self.local = Path(env_root) if env_root and not self.root else None
         self.graph = None
         if not self.root:
             tenant, client = os.getenv("TENANT_ID"), os.getenv("CLIENT_ID")
             if not (tenant and client):
+                if self.local:
+                    return
                 sys.exit("Set TENANT_ID and CLIENT_ID (Graph) or pass --archive-root.")
             from graph_client import GraphClient
             self.graph = GraphClient(
@@ -131,8 +136,22 @@ class Fetcher:
         return p
 
     def fetch(self, onedrive_path: str) -> bytes:
+        try:
+            return self._fetch(onedrive_path)
+        except Exception as e:  # only a missing PDF counts as "missing", not e.g. a missing Tesseract binary
+            if isinstance(e, FileNotFoundError) or "Graph error 404" in str(e):
+                raise MissingPDF(str(e)) from e
+            raise
+
+    def _fetch(self, onedrive_path: str) -> bytes:
         if self.root:
             return (self.root / self._relative(onedrive_path)).read_bytes()
+        if self.local:
+            path = self.local / self._relative(onedrive_path)
+            if path.is_file():
+                return path.read_bytes()
+            if not self.graph:
+                raise FileNotFoundError(f"not found under ARCHIVE_ROOT: {path}")
         full = onedrive_path
         if self.prefix and not onedrive_path.startswith(self.prefix + "/"):
             full = f"{self.prefix}/{onedrive_path}"
@@ -304,8 +323,8 @@ def save_missing(ids: set[int]) -> None:
     _missing_file().write_text("\n".join(str(i) for i in sorted(ids)) + "\n", encoding="utf-8")
 
 
-def is_missing_error(e: Exception) -> bool:
-    return isinstance(e, FileNotFoundError) or "Graph error 404" in str(e)
+class MissingPDF(Exception):
+    """The PDF is not at the stored path (Graph 404 / file not found)."""
 
 
 def write_document(doc_id: int, text: str, fields: dict[str, str]) -> None:
@@ -504,7 +523,7 @@ def main() -> None:
         except Exception as e:  # keep going; one bad PDF must not stop the batch
             print(f"{label}: ERROR {e}")
             stats["errors"] += 1
-            if is_missing_error(e):
+            if isinstance(e, MissingPDF):
                 newly_missing.add(doc["id"])
 
     if newly_missing and args.apply:
