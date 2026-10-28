@@ -179,9 +179,95 @@
   }
   .ki-send:disabled { opacity: .4; }
   .ki-send:not(:disabled):active { transform: scale(.92); }
+
+  /* ── Chat history sidebar ───────────────────────────────────────── */
+  .ki-layout { display: flex; gap: 16px; }
+  .ki-layout .ki-wrap { flex: 1; min-width: 0; }
+  .ki-sidebar { background: var(--app-surface); color: var(--app-text); }
+  @media (min-width: 768px) {
+    .ki-sidebar {
+      width: 250px;
+      flex-shrink: 0;
+      height: calc(100dvh - 90px);
+      border-right: 1px solid var(--app-border);
+      background: transparent;
+    }
+  }
+  .ki-sidebar .offcanvas-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 12px 12px 0; overflow-y: auto; }
+  @media (max-width: 767.98px) { .ki-sidebar .offcanvas-body { padding: 12px; } }
+  .ki-new-chat {
+    border: 1.5px dashed var(--app-border);
+    background: transparent;
+    color: var(--app-text);
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: .85rem;
+    text-align: left;
+  }
+  .ki-new-chat:hover { border-color: var(--app-accent); color: var(--app-accent); }
+  .ki-chat-list { display: flex; flex-direction: column; gap: 2px; }
+  .ki-chat-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 10px;
+    padding: 7px 8px 7px 12px;
+    cursor: pointer;
+    color: var(--app-text);
+  }
+  .ki-chat-item:hover { background: var(--app-surface-2); }
+  .ki-chat-item.active { background: var(--app-accent-soft); }
+  .ki-chat-item .ki-chat-text { flex: 1; min-width: 0; }
+  .ki-chat-item .ki-chat-title {
+    font-size: .84rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ki-chat-item .ki-chat-date { font-size: .72rem; color: var(--app-text-muted); }
+  .ki-chat-del {
+    border: none;
+    background: transparent;
+    color: var(--app-text-muted);
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: .8rem;
+    opacity: .6;
+  }
+  .ki-chat-del:hover { opacity: 1; color: #dc3545; }
+  .ki-chat-del.confirm { opacity: 1; color: #fff; background: #dc3545; }
+  .ki-topbar { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+  .ki-topbar .ki-current-title {
+    flex: 1; min-width: 0;
+    font-size: .85rem;
+    color: var(--app-text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ki-list-empty { font-size: .8rem; color: var(--app-text-muted); padding: 4px 12px; }
 </style>
 
+<div class="ki-layout">
+
+<!-- Earlier chats: sidebar on desktop, slide-in panel on phones -->
+<aside class="ki-sidebar offcanvas-md offcanvas-start" tabindex="-1" id="kiChats" aria-labelledby="kiChatsLabel">
+  <div class="offcanvas-header d-md-none">
+    <h6 class="offcanvas-title mb-0" id="kiChatsLabel">Frühere Chats</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#kiChats" aria-label="Schliessen"></button>
+  </div>
+  <div class="offcanvas-body">
+    <button class="ki-new-chat" type="button" onclick="newChat()">＋ Neuer Chat</button>
+    <div class="ki-chat-list" id="kiChatList"></div>
+  </div>
+</aside>
+
 <div class="ki-wrap">
+
+  <!-- Top bar (phones): open history, start a new chat -->
+  <div class="ki-topbar d-md-none">
+    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#kiChats">☰ Verlauf</button>
+    <span class="ki-current-title" id="kiCurrentTitle"></span>
+    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="newChat()">＋ Neu</button>
+  </div>
 
   <!-- History / chat area -->
   <div class="ki-history" id="kiHistory">
@@ -206,9 +292,11 @@
   </div>
 
 </div>
+</div>
 
 <script>
-const conversationHistory = [];
+let currentChatId = null;   // null = new chat, created on the first answer
+let busy = false;
 
 const TYPE_COLORS_HEX = {
   invoice:'#dc3545', insurance:'#0d6efd', tax:'#ffc107',
@@ -240,21 +328,65 @@ function suggest(btn) {
   ask();
 }
 
+/* ── rendering ─────────────────────────────────────────────────────── */
+function addQuestion(text) {
+  empty.style.display = 'none';
+  const wrap = document.createElement('div');
+  wrap.className = 'ki-bubble-wrap';
+  wrap.innerHTML = `<div class="ki-bubble-question">${escHtml(text)}</div>`;
+  history.appendChild(wrap);
+}
+
+function addAnswer(text, documents, isError) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ki-bubble-wrap';
+  wrap.innerHTML = isError
+    ? `<div class="ki-bubble-answer text-danger">${escHtml(text)}</div>`
+    : `<div class="ki-bubble-answer">${escHtml(text || '–')}</div>`;
+  if (documents && documents.length) {
+    const docsEl = document.createElement('div');
+    docsEl.className = 'ki-bubble-docs';
+    documents.forEach(doc => {
+      const accent = TYPE_COLORS_HEX[doc.document_type] || '#adb5bd';
+      const chip   = document.createElement('a');
+      chip.href    = '/document/' + doc.id;
+      chip.className = 'ki-doc-chip';
+      chip.innerHTML = `
+        <span class="swatch-dot flex-shrink-0" style="background:${accent};width:10px;height:10px;border-radius:50%;display:inline-block"></span>
+        <span class="chip-name">${escHtml(doc.new_filename || '–')}</span>
+        <span class="chip-meta">${escHtml(doc.document_date || '')}</span>`;
+      docsEl.appendChild(chip);
+    });
+    wrap.appendChild(docsEl);
+  }
+  history.appendChild(wrap);
+}
+
+function clearConversation() {
+  history.querySelectorAll('.ki-bubble-wrap, .ki-thinking').forEach(el => el.remove());
+  empty.style.display = '';
+}
+
+function setCurrentChat(id, title) {
+  currentChatId = id;
+  document.getElementById('kiCurrentTitle').textContent = title || '';
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set('chat', id); else url.searchParams.delete('chat');
+  window.history.replaceState(null, '', url);
+  document.querySelectorAll('.ki-chat-item').forEach(el =>
+    el.classList.toggle('active', Number(el.dataset.id) === id));
+}
+
+/* ── asking ────────────────────────────────────────────────────────── */
 function ask() {
   const q = input.value.trim();
-  if (!q) return;
+  if (!q || busy) return;
+  busy = true;
   input.value = '';
   input.style.height = 'auto';
   sendBtn.disabled = true;
-  empty.style.display = 'none';
 
-  /* question bubble */
-  const wrap = document.createElement('div');
-  wrap.className = 'ki-bubble-wrap';
-  wrap.innerHTML = `<div class="ki-bubble-question">${escHtml(q)}</div>`;
-  history.appendChild(wrap);
-
-  /* thinking dots */
+  addQuestion(q);
   const thinking = document.createElement('div');
   thinking.className = 'ki-thinking';
   thinking.innerHTML = '<span></span><span></span><span></span>';
@@ -264,59 +396,123 @@ function ask() {
   fetch('/api/nl-search', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({question: q, history: conversationHistory}),
+    body: JSON.stringify({question: q, chat_id: currentChatId}),
   })
   .then(r => r.json())
   .then(data => {
     thinking.remove();
-    const answerWrap = document.createElement('div');
-    answerWrap.className = 'ki-bubble-wrap';
-
     if (data.error) {
-      answerWrap.innerHTML = `<div class="ki-bubble-answer text-danger">Fehler: ${escHtml(data.error)}</div>`;
+      addAnswer('Fehler: ' + data.error, null, true);
     } else {
-      const answerText = data.answer || '–';
-      let html = `<div class="ki-bubble-answer">${escHtml(answerText)}</div>`;
-      answerWrap.innerHTML = html;
-
-      /* update conversation history for follow-up context */
-      conversationHistory.push({role: 'user', content: q});
-      conversationHistory.push({role: 'assistant', content: answerText});
-
-      if (data.documents && data.documents.length) {
-        const docsEl = document.createElement('div');
-        docsEl.className = 'ki-bubble-docs';
-        data.documents.forEach(doc => {
-          const accent = TYPE_COLORS_HEX[doc.document_type] || '#adb5bd';
-          const label  = TYPE_LABELS[doc.document_type] || doc.document_type || '–';
-          const chip   = document.createElement('a');
-          chip.href    = '/document/' + doc.id;
-          chip.className = 'ki-doc-chip';
-          chip.innerHTML = `
-            <span class="swatch-dot flex-shrink-0" style="background:${accent};width:10px;height:10px;border-radius:50%;display:inline-block"></span>
-            <span class="chip-name">${escHtml(doc.new_filename || '–')}</span>
-            <span class="chip-meta">${escHtml(doc.document_date || '')}</span>`;
-          docsEl.appendChild(chip);
-        });
-        answerWrap.appendChild(docsEl);
+      addAnswer(data.answer, data.documents);
+      if (data.chat_id) {
+        const isNew = data.chat_id !== currentChatId;
+        setCurrentChat(data.chat_id, isNew ? q : document.getElementById('kiCurrentTitle').textContent);
+        loadChatList();
       }
     }
-
-    history.appendChild(answerWrap);
-    scrollDown();
-    sendBtn.disabled = false;
-    input.focus();
   })
   .catch(err => {
     thinking.remove();
-    const errWrap = document.createElement('div');
-    errWrap.className = 'ki-bubble-wrap';
-    errWrap.innerHTML = `<div class="ki-bubble-answer text-danger">Netzwerkfehler: ${escHtml(err.message)}</div>`;
-    history.appendChild(errWrap);
+    addAnswer('Netzwerkfehler: ' + err.message, null, true);
+  })
+  .finally(() => {
+    busy = false;
+    sendBtn.disabled = !input.value.trim();
     scrollDown();
-    sendBtn.disabled = false;
+    input.focus();
   });
 }
+
+/* ── chat history ──────────────────────────────────────────────────── */
+function closeChatPanel() {
+  if (!window.bootstrap) return;
+  const panel = bootstrap.Offcanvas.getInstance(document.getElementById('kiChats'));
+  if (panel) panel.hide();
+}
+
+function newChat() {
+  if (busy) return;
+  clearConversation();
+  setCurrentChat(null, '');
+  closeChatPanel();
+  input.focus();
+}
+
+function openChat(id) {
+  if (busy) return;
+  fetch('/api/ki/chats/' + id)
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('Chat nicht gefunden')))
+    .then(chat => {
+      clearConversation();
+      chat.messages.forEach(m => {
+        if (m.role === 'user') addQuestion(m.content);
+        else addAnswer(m.content, m.documents);
+      });
+      setCurrentChat(chat.id, chat.title);
+      closeChatPanel();
+      history.scrollTo({top: history.scrollHeight});
+    })
+    .catch(() => newChat());
+}
+
+function deleteChat(id, btn) {
+  // First tap arms the button, second tap deletes
+  if (!btn.classList.contains('confirm')) {
+    btn.classList.add('confirm');
+    btn.textContent = 'Löschen?';
+    setTimeout(() => { btn.classList.remove('confirm'); btn.textContent = '🗑'; }, 3000);
+    return;
+  }
+  fetch('/api/ki/chats/' + id, {method: 'DELETE'}).then(() => {
+    if (id === currentChatId) newChat();
+    loadChatList();
+  });
+}
+
+function formatDate(ts) {
+  const d = new Date(String(ts).replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const today = new Date();
+  return d.toDateString() === today.toDateString()
+    ? d.toLocaleTimeString('de-CH', {hour: '2-digit', minute: '2-digit'})
+    : d.toLocaleDateString('de-CH', {day: '2-digit', month: '2-digit', year: 'numeric'});
+}
+
+function loadChatList() {
+  return fetch('/api/ki/chats')
+    .then(r => r.json())
+    .then(data => {
+      const list = document.getElementById('kiChatList');
+      list.innerHTML = '';
+      if (!data.chats || !data.chats.length) {
+        list.innerHTML = '<div class="ki-list-empty">Noch keine früheren Chats.</div>';
+        return;
+      }
+      data.chats.forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'ki-chat-item' + (c.id === currentChatId ? ' active' : '');
+        item.dataset.id = c.id;
+        item.innerHTML = `
+          <div class="ki-chat-text">
+            <div class="ki-chat-title" title="${escHtml(c.title)}">${escHtml(c.title)}</div>
+            <div class="ki-chat-date">${escHtml(formatDate(c.updated_at))}</div>
+          </div>
+          <button type="button" class="ki-chat-del" title="Chat löschen">🗑</button>`;
+        item.addEventListener('click', () => openChat(c.id));
+        const del = item.querySelector('.ki-chat-del');
+        del.addEventListener('click', e => { e.stopPropagation(); deleteChat(c.id, del); });
+        list.appendChild(item);
+      });
+    })
+    .catch(() => {});
+}
+
+/* restore the chat from the URL (?chat=ID), e.g. after a reload */
+(function init() {
+  const fromUrl = Number(new URLSearchParams(window.location.search).get('chat'));
+  loadChatList().then(() => { if (fromUrl) openChat(fromUrl); });
+})();
 
 function scrollDown() {
   history.scrollTo({top: history.scrollHeight, behavior: 'smooth'});

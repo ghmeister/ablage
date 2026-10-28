@@ -155,6 +155,23 @@ def init_db() -> None:
                 chunk_text  TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id);
+
+            -- KI-Suche chat history
+            CREATE TABLE IF NOT EXISTS ki_chats (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                title      TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ki_messages (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id    INTEGER NOT NULL REFERENCES ki_chats(id) ON DELETE CASCADE,
+                role       TEXT NOT NULL,            -- 'user' or 'assistant'
+                content    TEXT NOT NULL,
+                documents  TEXT,                     -- JSON list of linked documents (assistant only)
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ki_messages_chat ON ki_messages(chat_id, id);
         """)
         conn.commit()
         # Migration: add tax_relevant column if it doesn't exist yet
@@ -179,6 +196,73 @@ def init_db() -> None:
                 pass  # Column already exists
     finally:
         conn.close()
+
+
+# ── KI-Suche chat history ─────────────────────────────────────────────────────
+
+def _now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def ki_list_chats(limit: int = 100) -> list[dict]:
+    """Chats, most recently used first."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id, title, created_at, updated_at FROM ki_chats ORDER BY updated_at DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def ki_get_chat(chat_id: int) -> Optional[dict]:
+    """A chat with its messages in order, or None."""
+    import json as _json
+    with _conn() as conn:
+        chat = conn.execute("SELECT id, title, created_at, updated_at FROM ki_chats WHERE id = ?", (chat_id,)).fetchone()
+        if chat is None:
+            return None
+        msgs = conn.execute(
+            "SELECT role, content, documents, created_at FROM ki_messages WHERE chat_id = ? ORDER BY id",
+            (chat_id,),
+        ).fetchall()
+    out = dict(chat)
+    out["messages"] = [
+        {"role": m["role"], "content": m["content"], "created_at": m["created_at"],
+         "documents": _json.loads(m["documents"]) if m["documents"] else []}
+        for m in msgs
+    ]
+    return out
+
+
+def ki_save_exchange(chat_id: Optional[int], question: str, answer: str, documents: list[dict]) -> int:
+    """Store one question + answer; creates the chat when chat_id is None. Returns the chat id."""
+    import json as _json
+    now = _now()
+    with _conn() as conn:
+        if chat_id is None or conn.execute("SELECT 1 FROM ki_chats WHERE id = ?", (chat_id,)).fetchone() is None:
+            title = " ".join(question.split())
+            title = title if len(title) <= 80 else title[:77].rstrip() + "…"
+            chat_id = conn.execute(
+                "INSERT INTO ki_chats(title, created_at, updated_at) VALUES (?, ?, ?)", (title, now, now)
+            ).lastrowid
+        else:
+            conn.execute("UPDATE ki_chats SET updated_at = ? WHERE id = ?", (now, chat_id))
+        conn.execute(
+            "INSERT INTO ki_messages(chat_id, role, content, documents, created_at) VALUES (?, 'user', ?, NULL, ?)",
+            (chat_id, question, now),
+        )
+        conn.execute(
+            "INSERT INTO ki_messages(chat_id, role, content, documents, created_at) VALUES (?, 'assistant', ?, ?, ?)",
+            (chat_id, answer, _json.dumps(documents, ensure_ascii=False), now),
+        )
+    return chat_id
+
+
+def ki_delete_chat(chat_id: int) -> bool:
+    with _conn() as conn:
+        conn.execute("DELETE FROM ki_messages WHERE chat_id = ?", (chat_id,))
+        return conn.execute("DELETE FROM ki_chats WHERE id = ?", (chat_id,)).rowcount > 0
 
 
 def insert_document(

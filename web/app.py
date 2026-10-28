@@ -342,74 +342,107 @@ def nl_search():
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"error": "question required"}), 400
-    history = [
-        {"role": str(m.get("role", "")), "content": str(m.get("content", ""))}
-        for m in (data.get("history") or [])
-        if m.get("role") in ("user", "assistant") and m.get("content")
-    ]
+
+    # Follow-up context comes from the stored chat; a new chat starts empty
+    chat_id = data.get("chat_id")
+    chat_id = int(chat_id) if str(chat_id or "").isdigit() else None
+    chat = db_module.ki_get_chat(chat_id) if chat_id else None
+    history = [{"role": m["role"], "content": m["content"]} for m in (chat or {}).get("messages", [])]
 
     try:
-        sys.path.insert(0, str(Path(__file__).parent.parent))
-
-        if anthropic_api_key:
-            # Claude agent: searches the archive in several steps with tools
-            import ki_agent
-
-            result = ki_agent.run(
-                question=question,
-                anthropic_api_key=anthropic_api_key,
-                openai_api_key=openai_api_key,
-                db=db_module,
-                history=history,
-            )
-            linked_docs = []
-            for i in result["referenced_ids"]:
-                doc = db_module.get_document(i)
-                if doc is None:
-                    continue
-                doc_type = doc.get("document_type") or ""
-                linked_docs.append({
-                    "id": doc["id"],
-                    "new_filename": doc.get("new_filename", ""),
-                    "document_type": doc_type,
-                    "document_date": doc.get("document_date", ""),
-                    "sender": doc.get("sender") or doc.get("company") or "",
-                    "chunk_text": result["passages"].get(i, ""),
-                    "type_label": TYPE_LABELS.get(doc_type, doc_type),
-                    "type_color": TYPE_COLORS.get(doc_type, "secondary"),
-                })
-            return jsonify({"answer": result["answer"], "documents": linked_docs})
-
-        import nl_search as _nl
-
-        result = _nl.run(
-            question=question,
-            openai_api_key=openai_api_key,
-            db=db_module,
-            nl_max_distance=float(os.getenv("NL_MAX_DISTANCE", "1.05")),
-            history=history,
-        )
-
-        id_to_doc     = {doc["id"]: doc for doc in result["rows"]}
-        chunk_context = result["chunk_context"]
-        linked_docs = [
-            {
-                "id": id_to_doc[i]["id"],
-                "new_filename": id_to_doc[i].get("new_filename", ""),
-                "document_type": id_to_doc[i].get("document_type", ""),
-                "document_date": id_to_doc[i].get("document_date", ""),
-                "sender": id_to_doc[i].get("sender") or id_to_doc[i].get("company") or "",
-                "chunk_text": chunk_context.get(i, ""),
-                "type_label": TYPE_LABELS.get(id_to_doc[i].get("document_type", ""), id_to_doc[i].get("document_type", "")),
-                "type_color": TYPE_COLORS.get(id_to_doc[i].get("document_type", ""), "secondary"),
-            }
-            for i in result["referenced_ids"] if i in id_to_doc
-        ]
-        return jsonify({"answer": result["answer"], "documents": linked_docs})
-
+        answer, linked_docs = _answer_question(question, history, openai_api_key, anthropic_api_key)
     except Exception as e:
         app.logger.error(f"NL search error: {e}")
         return jsonify({"error": str(e)}), 500
+
+    try:
+        chat_id = db_module.ki_save_exchange(chat["id"] if chat else None, question, answer, linked_docs)
+    except Exception as e:  # history is a convenience; still return the answer
+        app.logger.error(f"KI chat history not saved: {e}")
+    return jsonify({"answer": answer, "documents": linked_docs, "chat_id": chat_id})
+
+
+@app.route("/api/ki/chats")
+def ki_chats():
+    return jsonify({"chats": db_module.ki_list_chats()})
+
+
+@app.route("/api/ki/chats/<int:chat_id>")
+def ki_chat(chat_id: int):
+    chat = db_module.ki_get_chat(chat_id)
+    if chat is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(chat)
+
+
+@app.route("/api/ki/chats/<int:chat_id>", methods=["DELETE"])
+def ki_chat_delete(chat_id: int):
+    if not db_module.ki_delete_chat(chat_id):
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True})
+
+
+def _answer_question(question: str, history: list[dict], openai_api_key: str,
+                     anthropic_api_key: str) -> tuple[str, list[dict]]:
+    """Run the KI-Suche; returns (answer, linked documents)."""
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    if anthropic_api_key:
+        # Claude agent: searches the archive in several steps with tools
+        import ki_agent
+
+        result = ki_agent.run(
+            question=question,
+            anthropic_api_key=anthropic_api_key,
+            openai_api_key=openai_api_key,
+            db=db_module,
+            history=history,
+        )
+        linked_docs = []
+        for i in result["referenced_ids"]:
+            doc = db_module.get_document(i)
+            if doc is None:
+                continue
+            doc_type = doc.get("document_type") or ""
+            linked_docs.append({
+                "id": doc["id"],
+                "new_filename": doc.get("new_filename", ""),
+                "document_type": doc_type,
+                "document_date": doc.get("document_date", ""),
+                "sender": doc.get("sender") or doc.get("company") or "",
+                "chunk_text": result["passages"].get(i, ""),
+                "type_label": TYPE_LABELS.get(doc_type, doc_type),
+                "type_color": TYPE_COLORS.get(doc_type, "secondary"),
+            })
+        return result["answer"], linked_docs
+
+    import nl_search as _nl
+
+    result = _nl.run(
+        question=question,
+        openai_api_key=openai_api_key,
+        db=db_module,
+        nl_max_distance=float(os.getenv("NL_MAX_DISTANCE", "1.05")),
+        history=history,
+    )
+
+    id_to_doc     = {doc["id"]: doc for doc in result["rows"]}
+    chunk_context = result["chunk_context"]
+    linked_docs = [
+        {
+            "id": id_to_doc[i]["id"],
+            "new_filename": id_to_doc[i].get("new_filename", ""),
+            "document_type": id_to_doc[i].get("document_type", ""),
+            "document_date": id_to_doc[i].get("document_date", ""),
+            "sender": id_to_doc[i].get("sender") or id_to_doc[i].get("company") or "",
+            "chunk_text": chunk_context.get(i, ""),
+            "type_label": TYPE_LABELS.get(id_to_doc[i].get("document_type", ""), id_to_doc[i].get("document_type", "")),
+            "type_color": TYPE_COLORS.get(id_to_doc[i].get("document_type", ""), "secondary"),
+        }
+        for i in result["referenced_ids"] if i in id_to_doc
+    ]
+    return result["answer"], linked_docs
+
 
 
 @app.route("/api/upload", methods=["POST"])
