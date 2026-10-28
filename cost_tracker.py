@@ -30,6 +30,7 @@ _PRICING: dict[str, tuple[float, float]] = {
     "text-embedding-3-small": (0.00002, 0.0),
     # Claude (KI-Suche); server-side fallbacks may answer with an Opus model
     "claude-sonnet-5-5":      (0.002,   0.010),
+    "claude-haiku-5-5":       (0.0001,  0.0005),  # prompts up to 100K tokens (above: 0.0005 / 0.0025)
     "claude-opus-5-5":        (0.004,   0.020),
     "claude-opus-5":          (0.005,   0.025),
     "claude-opus-4-8":        (0.005,   0.025),
