@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen{% endblock %}
+{% block content %}
+
+<style>
+  .set-card {
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    border-radius: var(--app-card-radius, 12px);
+    box-shadow: var(--app-card-shadow);
+    padding: 16px;
+    margin-bottom: 20px;
+    color: var(--app-text);
+  }
+  .set-card h2 { font-size: 1.05rem; font-weight: 600; margin-bottom: 4px; }
+  .set-help { font-size: .82rem; color: var(--app-text-muted); margin-bottom: 12px; }
+  .set-row {
+    display: grid;
+    gap: 8px 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--app-border);
+    align-items: start;
+  }
+  .set-row:first-child { border-top: none; }
+  .person-row { grid-template-columns: minmax(120px, 180px) 1fr auto; }
+  .group-row  { grid-template-columns: minmax(130px, 200px) 1fr 1fr minmax(120px, 160px) auto; }
+  .group-row .group-note { grid-column: 2 / 5; }
+  @media (max-width: 767.98px) {
+    .person-row, .group-row { grid-template-columns: 1fr auto; }
+    .person-row .tags, .group-row .tags, .group-row .group-note, .group-row select { grid-column: 1 / -1; }
+    .group-row .group-name-cell { grid-column: 1; }
+    .set-row .row-del { grid-row: 1; grid-column: 2; }
+  }
+  .set-label { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: var(--app-text-muted); margin-bottom: 2px; }
+
+  /* tag input: one chip per spelling, Enter adds */
+  .tags {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    min-height: 34px;
+    padding: 3px 4px;
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    background: var(--app-surface-2);
+  }
+  .tags:focus-within { border-color: var(--app-accent); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--app-accent-soft);
+    color: var(--app-text);
+    border-radius: 6px;
+    padding: 2px 4px 2px 8px;
+    font-size: .8rem;
+    max-width: 100%;
+  }
+  .tag span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag button { border: none; background: transparent; color: var(--app-text-muted); padding: 0 4px; line-height: 1; }
+  .tag button:hover { color: #dc3545; }
+  .tags input {
+    flex: 1; min-width: 120px;
+    border: none; outline: none; background: transparent;
+    color: var(--app-text); font-size: .82rem; padding: 2px 4px;
+  }
+  .set-row .form-control, .set-row .form-select { font-size: .85rem; }
+  .row-del { border: none; background: transparent; color: var(--app-text-muted); font-size: .9rem; padding: 4px 6px; }
+  .row-del:hover { color: #dc3545; }
+  .doc-count { font-size: .72rem; color: var(--app-text-muted); margin-top: 3px; }
+  .doc-count.zero { color: #dc3545; }
+
+  .save-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .save-state { font-size: .8rem; color: var(--app-text-muted); }
+  .save-state.dirty { color: #fd7e14; font-weight: 600; }
+  .save-state.error { color: #dc3545; }
+
+  .unassigned-item {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 6px 0;
+    border-top: 1px solid var(--app-border);
+    font-size: .85rem;
+  }
+  .unassigned-item:first-child { border-top: none; }
+  .unassigned-item .u-name { flex: 1; min-width: 160px; }
+  .unassigned-item .u-count { color: var(--app-text-muted); font-size: .75rem; }
+  .unassigned-item select { max-width: 200px; font-size: .8rem; }
+  .yaml-box { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Einstellungen</h1>
+</div>
+<p class="set-help">
+  Änderungen gelten sofort für neue Dokumente (Dateinamen), die KI-Suche, den Telegram-Bot und den MCP-Server —
+  ohne Neustart. Bereits abgelegte Dateien werden nicht umbenannt.
+</p>
+
+<!-- ── Personen ───────────────────────────────────────────────────── -->
+<section class="set-card">
+  <h2>👪 Personen</h2>
+  <p class="set-help">
+    Der Name erscheint so in Dateinamen (z. B. <code>Rechnung_Swisscard_Manuel_…</code>). Varianten sind weitere
+    Schreibweisen, unter denen die Person auf Dokumenten steht, z. B. „Meister, Manuel“ oder „Manuel und Judith“.
+    Mit Enter hinzufügen.
+  </p>
+  <div id="personList"></div>
+  <div class="save-bar">
+    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="addPerson()">＋ Person</button>
+    <button class="btn btn-primary btn-sm" type="button" id="savePersons" onclick="savePersons()">Personen speichern</button>
+    <span class="save-state" id="personsState"></span>
+  </div>
+</section>
+
+<!-- ── Absender-Gruppen ───────────────────────────────────────────── -->
+<section class="set-card">
+  <h2>🏢 Absender-Gruppen</h2>
+  <p class="set-help">
+    Fasst verschiedene Schreibweisen eines Absenders zusammen. Der Name ist der Kurzname für Dateinamen und Suche
+    (z. B. „Mobiliar“ für „Die Mobiliar“). Suchbegriffe sind Wörter, mit denen du in der KI-Suche nach diesem Absender
+    fragst (z. B. „Strom“ → BKW). Die Zahl unter dem Namen zeigt, wie viele Dokumente die Gruppe erfasst.
+  </p>
+  <input type="search" class="form-control form-control-sm mb-2" id="groupFilter" placeholder="Gruppen filtern …"
+         style="max-width:260px" oninput="renderGroups()">
+  <div id="groupList"></div>
+  <div class="save-bar">
+    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="addGroup('')">＋ Gruppe</button>
+    <button class="btn btn-primary btn-sm" type="button" id="saveGroups" onclick="saveGroups()">Gruppen speichern</button>
+    <span class="save-state" id="groupsState"></span>
+  </div>
+</section>
+
+<!-- ── Nicht zugeordnete Absender ─────────────────────────────────── -->
+<section class="set-card">
+  <h2>🔎 Absender ohne Gruppe</h2>
+  <p class="set-help">
+    Diese Absender-Schreibweisen aus deinem Archiv gehören noch zu keiner Gruppe. Ordne sie einer Gruppe zu oder lege
+    eine neue an; danach oben „Gruppen speichern“.
+  </p>
+  <div id="unassignedList"></div>
+  <button class="btn btn-link btn-sm px-0" type="button" id="unassignedMore" onclick="unassignedLimit += 30; renderUnassigned()" hidden>Mehr anzeigen</button>
+</section>
+
+<!-- ── Import / Export ────────────────────────────────────────────── -->
+<section class="set-card">
+  <h2>⇅ Import und Export</h2>
+  <p class="set-help">
+    Import ergänzt bestehende Einträge, nichts wird gelöscht. Akzeptiert das Export-Format, die <code>aliases.yaml</code>
+    des MCP-Servers (<code>senders</code>, <code>recipients</code>) und <code>nl_hints</code> /
+    <code>nl_family_members</code> aus <code>classification_rules.yaml</code>.
+  </p>
+  <textarea class="form-control yaml-box mb-2" id="yamlBox" rows="8" placeholder="YAML hier einfügen …"></textarea>
+  <div class="save-bar mt-0">
+    <button class="btn btn-primary btn-sm" type="button" onclick="importYaml()">Importieren</button>
+    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="exportYaml()">Aktuelle Einstellungen als YAML anzeigen</button>
+    <span class="save-state" id="yamlState"></span>
+  </div>
+</section>
+
+<script>
+const TYPE_LABELS = {{ type_labels | tojson }};
+let persons = [], groups = [], unassigned = [];
+let unassignedLimit = 30;
+let personsDirty = false, groupsDirty = false;
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function setState(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'save-state' + (cls ? ' ' + cls : '');
+}
+function markPersons() { personsDirty = true; setState('personsState', 'Ungespeicherte Änderungen', 'dirty'); }
+function markGroups()  { groupsDirty  = true; setState('groupsState',  'Ungespeicherte Änderungen', 'dirty'); }
+
+window.addEventListener('beforeunload', e => {
+  if (personsDirty || groupsDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+/* ── tag input ─────────────────────────────────────────────────────── */
+function tagInput(values, placeholder, onChange) {
+  const box = document.createElement('div');
+  box.className = 'tags';
+  const input = document.createElement('input');
+  input.placeholder = placeholder;
+  function render() {
+    box.querySelectorAll('.tag').forEach(t => t.remove());
+    values.forEach((v, i) => {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.innerHTML = `<span title="${escHtml(v)}">${escHtml(v)}</span><button type="button" title="Entfernen">×</button>`;
+      tag.querySelector('button').addEventListener('click', () => { values.splice(i, 1); render(); onChange(); });
+      box.insertBefore(tag, input);
+    });
+  }
+  function commit() {
+    const v = input.value.trim().replace(/\s+/g, ' ');
+    if (v && !values.some(x => x.toLowerCase() === v.toLowerCase())) { values.push(v); onChange(); }
+    input.value = '';
+    render();
+  }
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Backspace' && !input.value && values.length) { values.pop(); render(); onChange(); }
+  });
+  input.addEventListener('blur', commit);   // typing then tapping elsewhere still adds the value
+  box.addEventListener('click', e => { if (e.target === box) input.focus(); });
+  box.appendChild(input);
+  render();
+  return box;
+}
+
+/* ── persons ───────────────────────────────────────────────────────── */
+function renderPersons() {
+  const list = document.getElementById('personList');
+  list.innerHTML = '';
+  if (!persons.length) list.innerHTML = '<p class="set-help mb-0">Noch keine Personen.</p>';
+  persons.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'set-row person-row';
+    const name = document.createElement('input');
+    name.className = 'form-control form-control-sm';
+    name.value = p.name;
+    name.placeholder = 'Vorname';
+    name.addEventListener('input', () => { p.name = name.value; markPersons(); });
+    const del = document.createElement('button');
+    del.className = 'row-del'; del.type = 'button'; del.title = 'Person entfernen'; del.textContent = '🗑';
+    del.addEventListener('click', () => { persons.splice(i, 1); renderPersons(); markPersons(); });
+    row.append(name, tagInput(p.variants, 'Variante + Enter', markPersons), del);
+    list.appendChild(row);
+  });
+}
+
+function addPerson() {
+  persons.push({name: '', variants: []});
+  renderPersons();
+  markPersons();
+  document.querySelector('#personList .set-row:last-child input')?.focus();
+}
+
+/* ── sender groups ─────────────────────────────────────────────────── */
+function typeSelect(value, onChange) {
+  const sel = document.createElement('select');
+  sel.className = 'form-select form-select-sm';
+  sel.innerHTML = '<option value="">Typ: beliebig</option>' +
+    Object.entries(TYPE_LABELS).filter(([k]) => k !== 'other')
+      .map(([k, label]) => `<option value="${escHtml(k)}">${escHtml(label)}</option>`).join('');
+  sel.value = value || '';
+  sel.addEventListener('change', () => onChange(sel.value || null));
+  return sel;
+}
+
+function renderGroups() {
+  const filter = document.getElementById('groupFilter').value.trim().toLowerCase();
+  const list = document.getElementById('groupList');
+  list.innerHTML = '';
+  const shown = groups.filter(g => !filter ||
+    [g.name, ...g.variants, ...g.search_terms].some(t => t.toLowerCase().includes(filter)));
+  if (!shown.length) list.innerHTML = `<p class="set-help mb-0">${groups.length ? 'Keine Gruppe passt zum Filter.' : 'Noch keine Gruppen.'}</p>`;
+  shown.forEach(g => {
+    const row = document.createElement('div');
+    row.className = 'set-row group-row';
+
+    const nameCell = document.createElement('div');
+    nameCell.className = 'group-name-cell';
+    const name = document.createElement('input');
+    name.className = 'form-control form-control-sm';
+    name.value = g.name;
+    name.placeholder = 'Kurzname';
+    name.addEventListener('input', () => { g.name = name.value; markGroups(); });
+    const count = document.createElement('div');
+    if (g.document_count !== undefined) {
+      count.className = 'doc-count' + (g.document_count ? '' : ' zero');
+      count.textContent = g.document_count === 1 ? '1 Dokument' : `${g.document_count} Dokumente`;
+    }
+    nameCell.append(name, count);
+
+    const del = document.createElement('button');
+    del.className = 'row-del'; del.type = 'button'; del.title = 'Gruppe entfernen'; del.textContent = '🗑';
+    del.addEventListener('click', () => { groups.splice(groups.indexOf(g), 1); renderGroups(); renderUnassigned(); markGroups(); });
+
+    const note = document.createElement('input');
+    note.className = 'form-control form-control-sm group-note';
+    note.placeholder = 'Notiz für die KI-Suche (optional), z. B. „Krankenkasse von Judith“';
+    note.value = g.note || '';
+    note.addEventListener('input', () => { g.note = note.value; markGroups(); });
+
+    row.append(
+      nameCell,
+      tagInput(g.variants, 'Schreibweise + Enter', () => { markGroups(); renderUnassigned(); }),
+      tagInput(g.search_terms, 'Suchbegriff + Enter', markGroups),
+      typeSelect(g.document_type, v => { g.document_type = v; markGroups(); }),
+      del,
+      note,
+    );
+    list.appendChild(row);
+  });
+}
+
+function addGroup(name) {
+  groups.push({name, variants: [], search_terms: [], document_type: null, note: ''});
+  document.getElementById('groupFilter').value = '';
+  renderGroups();
+  markGroups();
+  if (!name) document.querySelector('#groupList .set-row:last-child input')?.focus();
+}
+
+/* ── senders without a group ───────────────────────────────────────── */
+function isCovered(senderName) {
+  const low = senderName.toLowerCase();
+  return groups.some(g => [g.name, ...g.variants].some(t => t && low.includes(t.toLowerCase())));
+}
+
+function renderUnassigned() {
+  const list = document.getElementById('unassignedList');
+  list.innerHTML = '';
+  const open = unassigned.filter(u => !isCovered(u.name));
+  if (!open.length) list.innerHTML = '<p class="set-help mb-0">Alle Absender gehören zu einer Gruppe. 🎉</p>';
+  const sorted = [...groups].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  open.slice(0, unassignedLimit).forEach(u => {
+    const item = document.createElement('div');
+    item.className = 'unassigned-item';
+    item.innerHTML = `<span class="u-name">${escHtml(u.name)}</span>
+      <span class="u-count">${u.count} Dok.</span>`;
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm';
+    sel.innerHTML = '<option value="">Zu Gruppe …</option>' +
+      sorted.map((g, i) => `<option value="${groups.indexOf(g)}">${escHtml(g.name || '(ohne Namen)')}</option>`).join('');
+    sel.addEventListener('change', () => {
+      const g = groups[Number(sel.value)];
+      if (!g) return;
+      if (!g.variants.some(v => v.toLowerCase() === u.name.toLowerCase())) g.variants.push(u.name);
+      markGroups(); renderGroups(); renderUnassigned();
+    });
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline-secondary btn-sm';
+    btn.type = 'button';
+    btn.textContent = '＋ Neue Gruppe';
+    btn.addEventListener('click', () => { addGroup(u.name); renderUnassigned(); });
+    item.append(sel, btn);
+    list.appendChild(item);
+  });
+  document.getElementById('unassignedMore').hidden = open.length <= unassignedLimit;
+}
+
+/* ── load / save ───────────────────────────────────────────────────── */
+function applyPayload(data, which) {
+  if (which !== 'groups') persons = data.persons.map(p => ({name: p.name, variants: [...p.variants]}));
+  if (which !== 'persons') groups = data.sender_groups.map(g => ({
+    name: g.name, variants: [...g.variants], search_terms: [...g.search_terms],
+    document_type: g.document_type, note: g.note || '', document_count: g.document_count,
+  }));
+  unassigned = data.unassigned_senders || [];
+  if (which !== 'groups') renderPersons();
+  if (which !== 'persons') renderGroups();
+  renderUnassigned();
+}
+
+function postJson(url, body) {
+  return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+    .then(r => r.json().then(data => r.ok ? data : Promise.reject(new Error(data.error || ('HTTP ' + r.status)))));
+}
+
+function savePersons() {
+  const btn = document.getElementById('savePersons');
+  btn.disabled = true;
+  postJson('/api/settings/persons', {persons})
+    .then(data => { personsDirty = false; applyPayload(data, 'persons'); setState('personsState', 'Gespeichert ✓'); })
+    .catch(e => setState('personsState', e.message, 'error'))
+    .finally(() => { btn.disabled = false; });
+}
+
+function saveGroups() {
+  const btn = document.getElementById('saveGroups');
+  btn.disabled = true;
+  const payload = groups.map(({document_count, ...g}) => g);
+  postJson('/api/settings/sender-groups', {sender_groups: payload})
+    .then(data => { groupsDirty = false; applyPayload(data, 'groups'); setState('groupsState', 'Gespeichert ✓'); })
+    .catch(e => setState('groupsState', e.message, 'error'))
+    .finally(() => { btn.disabled = false; });
+}
+
+function importYaml() {
+  if (personsDirty || groupsDirty) {
+    setState('yamlState', 'Bitte zuerst die offenen Änderungen speichern.', 'error');
+    return;
+  }
+  postJson('/api/settings/import', {yaml: document.getElementById('yamlBox').value})
+    .then(data => {
+      const s = data.imported;
+      applyPayload(data);
+      setState('yamlState', `Importiert: ${s.persons_added} neue / ${s.persons_updated} ergänzte Personen, ` +
+                            `${s.groups_added} neue / ${s.groups_updated} ergänzte Gruppen ✓`);
+    })
+    .catch(e => setState('yamlState', e.message, 'error'));
+}
+
+function exportYaml() {
+  fetch('/api/settings/export').then(r => r.text()).then(text => {
+    document.getElementById('yamlBox').value = text;
+    setState('yamlState', 'Aktueller Stand (gespeicherte Einstellungen) — zum Sichern kopieren.');
+  });
+}
+
+fetch('/api/settings').then(r => r.json()).then(data => applyPayload(data));
+</script>
+{% endblock %}

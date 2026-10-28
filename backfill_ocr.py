@@ -237,7 +237,17 @@ def date_in_text(iso: str, text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
 
-KNOWN_PERSONS = {p.strip().lower() for p in os.getenv("KNOWN_PERSONS", "manuel,judith,dominik,clara,nora").split(",") if p.strip()}
+def _default_known_persons() -> str:
+    """First names from the Einstellungen page; the old fixed list if none are stored."""
+    try:
+        import config_store
+        names = config_store.known_person_names()
+    except Exception:
+        names = []
+    return ",".join(names) if names else "manuel,judith,dominik,clara,nora"
+
+
+KNOWN_PERSONS = {p.strip().lower() for p in (os.getenv("KNOWN_PERSONS") or _default_known_persons()).split(",") if p.strip()}
 FAMILY_NAME = os.getenv("FAMILY_NAME", "Meister")
 
 

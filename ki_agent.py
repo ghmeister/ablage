@@ -17,6 +17,8 @@ import struct
 import time
 from typing import Any, Callable
 
+import config_store
+
 MODEL = os.getenv("KI_MODEL", "claude-sonnet-5-5")
 MAX_ROUNDS = 8            # tool rounds before the agent must answer
 DEADLINE_SECONDS = 90     # stay below gunicorn's 120 s worker timeout
@@ -164,11 +166,16 @@ def _filters(args: dict[str, Any]) -> tuple[list[str], list[Any]]:
         conds.append("d.document_type = ?")
         params.append(args["document_type"])
     if args.get("sender"):
-        conds.append("(d.sender LIKE ? OR d.company LIKE ? OR d.email_from LIKE ?)")
-        params += [f"%{args['sender']}%"] * 3
+        # A sender group name (or one of its spellings) searches all spellings
+        terms = config_store.expand_sender(str(args["sender"]))
+        one = "(d.sender LIKE ? OR d.company LIKE ? OR d.email_from LIKE ?)"
+        conds.append("(" + " OR ".join([one] * len(terms)) + ")")
+        for t in terms:
+            params += [f"%{t}%"] * 3
     if args.get("recipient"):
-        conds.append("d.recipient LIKE ?")
-        params.append(f"%{args['recipient']}%")
+        terms = config_store.expand_person(str(args["recipient"]))
+        conds.append("(" + " OR ".join(["d.recipient LIKE ?"] * len(terms)) + ")")
+        params += [f"%{t}%" for t in terms]
     if args.get("date_from"):
         conds.append("d.document_date >= ?")
         params.append(args["date_from"])
@@ -388,6 +395,12 @@ def run(question: str, anthropic_api_key: str, openai_api_key: str, db: Any,
             messages.append({"role": m["role"], "content": str(m["content"])})
     messages.append({"role": "user", "content": question})
 
+    # Sender groups and family members from the Einstellungen page
+    system: list[dict[str, Any]] = [{"type": "text", "text": SYSTEM_PROMPT}]
+    hints = config_store.search_hints()
+    if hints:
+        system.append({"type": "text", "text": "Archive vocabulary (filter values accept any listed spelling):\n" + hints})
+
     started = time.monotonic()
     response = None
     for round_no in range(MAX_ROUNDS + 1):
@@ -395,7 +408,7 @@ def run(question: str, anthropic_api_key: str, openai_api_key: str, db: Any,
         response = client.beta.messages.create(
             model=MODEL,
             max_tokens=16000,
-            system=SYSTEM_PROMPT,
+            system=system,
             tools=TOOLS,
             # After the budget is used up, the agent must answer with what it has.
             tool_choice={"type": "none"} if out_of_budget else {"type": "auto"},

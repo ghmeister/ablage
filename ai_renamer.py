@@ -52,6 +52,15 @@ class AIRenamer:
         if len(pdf_content) > max_content_length:
             truncated_content += "...[content truncated]"
 
+        # Family members and sender spellings from the Einstellungen page
+        try:
+            import config_store
+            family = ", ".join(config_store.known_person_names()) or "none configured"
+            sender_hints = config_store.renamer_hints()
+        except Exception:
+            family, sender_hints = "none configured", ""
+        sender_hints_str = f"{sender_hints}\n\n" if sender_hints else ""
+
         system_prompt = (
             "You are a document analysis assistant. "
             "You MUST respond with ONLY valid JSON — no markdown, no explanation, no extra text.\n\n"
@@ -116,7 +125,7 @@ class AIRenamer:
             f"                     'Gebäudeversicherung Bern' → GVB, 'Allianz Suisse' → Allianz.\n"
             f"                     Omit if no company/sender is identifiable.\n"
             f"                  3. FirstName: the person the document is for/about, if identifiable.\n"
-            f"                     Known family members: Manuel, Judith, Dominik, Clara, Nora.\n"
+            f"                     Known family members: {family}.\n"
             f"                     Omit this part if no person is identifiable.\n"
             f"                  4. Details: concise additional info. Include relevant identifiers such as:\n"
             f"                     - Insurance/policy number (e.g. V955415027, G-1286-0634)\n"
@@ -155,6 +164,7 @@ class AIRenamer:
             f"                  bank tax documents (Zinsausweis, Steuerausweis), AirBnB income\n"
             f"                  statements, any document from Steueramt/ESTV.\n"
             f"                  Set to false for regular invoices, insurance policies, letters, etc.\n\n"
+            f"{sender_hints_str}"
             f"Original filename: {original_filename}\n\n"
             f"{email_context_str}"
             f"PDF Content:\n{truncated_content}\n\n"

@@ -43,6 +43,35 @@ def _load_nl_hints() -> str:
 _NL_HINTS = _load_nl_hints()
 
 
+def _current_nl_hints() -> str:
+    """Hints from the Einstellungen page (sender groups, persons); YAML as fallback."""
+    try:
+        import config_store
+        groups = config_store.sender_groups()
+        people = config_store.persons()
+    except Exception:
+        return _NL_HINTS
+    if not groups and not people:
+        return _NL_HINTS
+    lines: list[str] = ["Archive-specific category→sender mappings (use these to set sender/type):"]
+    for g in groups:
+        words = list(g.get("search_terms") or []) + list(g.get("variants") or [])
+        if not words:
+            continue
+        parts = [f'  "{" / ".join(words)}"', f'→ sender="{g["name"]}"']
+        if g.get("document_type"):
+            parts.append(f'+ type="{g["document_type"]}"')
+        if g.get("note"):
+            parts.append(f'({g["note"]})')
+        lines.append(" ".join(parts))
+    if people:
+        lines.append(
+            f"Family members: {', '.join(p['name'] for p in people)}. When a member name is mentioned, "
+            "include it as a keyword to filter their specific documents."
+        )
+    return "\n".join(lines)
+
+
 _INTENT_SYSTEM = (
     "You extract search intent from a question about a personal document archive. "
     "Known document types in the archive: {known_types}. "
@@ -141,7 +170,7 @@ def run(
         {"role": "system", "content": _INTENT_SYSTEM.format(
             known_types=known_types,
             known_senders=known_senders,
-            nl_hints=_NL_HINTS,
+            nl_hints=_current_nl_hints(),
         )},
         *recent_history,
         {"role": "user", "content": question},

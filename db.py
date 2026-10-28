@@ -7,12 +7,13 @@ When running locally, set DB_PATH to a local path, e.g.:
 """
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 
 _db_path_override: Optional[Path] = None
 _vec_available: bool = False  # set to True once sqlite-vec loads successfully
@@ -172,8 +173,29 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_ki_messages_chat ON ki_messages(chat_id, id);
+
+            -- Settings edited in the web UI (Einstellungen); lists are JSON arrays
+            CREATE TABLE IF NOT EXISTS persons (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL UNIQUE,     -- first name as used in filenames
+                variants   TEXT NOT NULL DEFAULT '[]',
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS sender_groups (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL UNIQUE,  -- canonical short name, e.g. KPT
+                variants      TEXT NOT NULL DEFAULT '[]',
+                search_terms  TEXT NOT NULL DEFAULT '[]',
+                document_type TEXT,
+                note          TEXT
+            );
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            );
         """)
         conn.commit()
+        _seed_settings_from_yaml(conn)
         # Migration: add tax_relevant column if it doesn't exist yet
         for migration in [
             "ALTER TABLE documents ADD COLUMN tax_relevant INTEGER NOT NULL DEFAULT 0",
@@ -837,3 +859,210 @@ def _sanitize_fts_query(query: str) -> str:
     if not tokens:
         return '""'
     return ' '.join(f'"{t}"*' for t in tokens)
+
+
+# ── Settings: persons and sender groups ───────────────────────────────────────
+# Edited on the Einstellungen page; read by the bot (filenames), the KI-Suche and
+# the ablage-mcp server. Seeded once from classification_rules.yaml.
+
+def _clean_list(values: Any) -> list[str]:
+    """Unique, non-empty, whitespace-normalised strings (keeps the first spelling)."""
+    if isinstance(values, str):
+        values = values.split(",")
+    out: list[str] = []
+    seen: set[str] = set()
+    for v in values or []:
+        s = " ".join(str(v).split())
+        if s and s.lower() not in seen:
+            seen.add(s.lower())
+            out.append(s)
+    return out
+
+
+def parse_settings_yaml(cfg: dict) -> tuple[list[dict], list[dict]]:
+    """Read persons and sender groups from any supported YAML layout.
+
+    Supports classification_rules.yaml (nl_family_members, nl_hints), the
+    ablage-mcp aliases.yaml (senders, recipients) and the export format
+    (persons, sender_groups).
+    """
+    persons: list[dict] = []
+    groups: list[dict] = []
+    for m in cfg.get("nl_family_members") or []:
+        if m.get("name"):
+            persons.append({"name": m["name"], "variants": m.get("aliases") or []})
+    for r in cfg.get("recipients") or []:
+        if r.get("name"):
+            first = str(r["name"]).split()[0]
+            persons.append({"name": first, "variants": [r["name"], *(r.get("match") or [])]})
+    for p in cfg.get("persons") or []:
+        if p.get("name"):
+            persons.append({"name": p["name"], "variants": p.get("variants") or []})
+
+    for h in cfg.get("nl_hints") or []:
+        if h.get("sender"):
+            groups.append({"name": h["sender"], "search_terms": h.get("triggers") or [],
+                           "document_type": h.get("type"), "note": h.get("note")})
+    for s in cfg.get("senders") or []:
+        if s.get("name"):
+            groups.append({"name": s["name"], "variants": s.get("match") or []})
+    for g in cfg.get("sender_groups") or []:
+        if g.get("name"):
+            groups.append(dict(g))
+    return persons, groups
+
+
+def _merge_settings(conn: sqlite3.Connection, persons: list[dict], groups: list[dict]) -> dict:
+    """Add persons/groups, merging variants into existing entries with the same name."""
+    stats = {"persons_added": 0, "persons_updated": 0, "groups_added": 0, "groups_updated": 0}
+    for p in persons:
+        name = " ".join(str(p["name"]).split())
+        row = conn.execute("SELECT id, variants FROM persons WHERE lower(name) = lower(?)", (name,)).fetchone()
+        new = [v for v in _clean_list(p.get("variants")) if v.lower() != name.lower()]
+        if row is None:
+            order = conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM persons").fetchone()[0]
+            conn.execute("INSERT INTO persons(name, variants, sort_order) VALUES (?, ?, ?)",
+                         (name, json.dumps(new, ensure_ascii=False), order))
+            stats["persons_added"] += 1
+        else:
+            old = json.loads(row["variants"] or "[]")
+            merged = _clean_list(old + new)
+            if merged != old:
+                conn.execute("UPDATE persons SET variants = ? WHERE id = ?",
+                             (json.dumps(merged, ensure_ascii=False), row["id"]))
+                stats["persons_updated"] += 1
+    for g in groups:
+        name = " ".join(str(g["name"]).split())
+        variants = [v for v in _clean_list(g.get("variants")) if v.lower() != name.lower()]
+        terms = _clean_list(g.get("search_terms"))
+        # Merge into an existing group that already knows this name or one of its spellings
+        # (e.g. imported "Allianz Suisse" with spelling "Allianz" joins the existing "Allianz").
+        incoming = {name.lower(), *(v.lower() for v in variants)}
+        row = None
+        for r in conn.execute("SELECT * FROM sender_groups ORDER BY id"):
+            known = {r["name"].lower(), *(v.lower() for v in json.loads(r["variants"] or "[]"))}
+            if r["name"].lower() == name.lower() or incoming & known:
+                row = r
+                break
+        if row is not None and row["name"].lower() != name.lower():
+            variants = _clean_list([name, *variants])
+            variants = [v for v in variants if v.lower() != row["name"].lower()]
+        if row is None:
+            conn.execute(
+                "INSERT INTO sender_groups(name, variants, search_terms, document_type, note) VALUES (?, ?, ?, ?, ?)",
+                (name, json.dumps(variants, ensure_ascii=False), json.dumps(terms, ensure_ascii=False),
+                 g.get("document_type") or None, g.get("note") or None),
+            )
+            stats["groups_added"] += 1
+        else:
+            old_v, old_t = json.loads(row["variants"] or "[]"), json.loads(row["search_terms"] or "[]")
+            mv, mt = _clean_list(old_v + variants), _clean_list(old_t + terms)
+            dt = row["document_type"] or g.get("document_type") or None
+            note = row["note"] or g.get("note") or None
+            if (mv, mt, dt, note) != (old_v, old_t, row["document_type"], row["note"]):
+                conn.execute(
+                    "UPDATE sender_groups SET variants = ?, search_terms = ?, document_type = ?, note = ? WHERE id = ?",
+                    (json.dumps(mv, ensure_ascii=False), json.dumps(mt, ensure_ascii=False), dt, note, row["id"]),
+                )
+                stats["groups_updated"] += 1
+    return stats
+
+
+def _seed_settings_from_yaml(conn: sqlite3.Connection) -> None:
+    """Fill persons and sender groups from classification_rules.yaml on the very first start."""
+    cur = conn.execute("INSERT OR IGNORE INTO app_meta(key, value) VALUES ('settings_seeded', datetime('now'))")
+    conn.commit()
+    if cur.rowcount != 1:
+        return  # already seeded (by this or another container)
+    try:
+        import yaml
+        rules_file = os.getenv("CLASSIFICATION_RULES_FILE", "classification_rules.yaml")
+        with open(rules_file, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        persons, groups = parse_settings_yaml(cfg)
+        _merge_settings(conn, persons, groups)
+        conn.commit()
+    except Exception as e:
+        print(f"Warning   : could not import settings from classification rules: {e}")
+
+
+def _person_row(r: sqlite3.Row) -> dict:
+    return {"id": r["id"], "name": r["name"], "variants": json.loads(r["variants"] or "[]")}
+
+
+def _group_row(r: sqlite3.Row) -> dict:
+    return {"id": r["id"], "name": r["name"], "variants": json.loads(r["variants"] or "[]"),
+            "search_terms": json.loads(r["search_terms"] or "[]"),
+            "document_type": r["document_type"], "note": r["note"]}
+
+
+def get_persons() -> list[dict]:
+    with _conn() as conn:
+        return [_person_row(r) for r in conn.execute("SELECT * FROM persons ORDER BY sort_order, id")]
+
+
+def get_sender_groups() -> list[dict]:
+    with _conn() as conn:
+        return [_group_row(r) for r in conn.execute("SELECT * FROM sender_groups ORDER BY name COLLATE NOCASE")]
+
+
+def _validate_names(items: list[dict], what: str) -> None:
+    seen: set[str] = set()
+    for it in items:
+        name = " ".join(str(it.get("name") or "").split())
+        if not name:
+            raise ValueError(f"{what}: Name darf nicht leer sein")
+        if name.lower() in seen:
+            raise ValueError(f"{what}: '{name}' kommt doppelt vor")
+        seen.add(name.lower())
+
+
+def save_persons(persons: list[dict]) -> None:
+    """Replace the person list (order = list order)."""
+    _validate_names(persons, "Personen")
+    with _conn() as conn:
+        conn.execute("DELETE FROM persons")
+        for i, p in enumerate(persons):
+            name = " ".join(str(p["name"]).split())
+            variants = [v for v in _clean_list(p.get("variants")) if v.lower() != name.lower()]
+            conn.execute("INSERT INTO persons(name, variants, sort_order) VALUES (?, ?, ?)",
+                         (name, json.dumps(variants, ensure_ascii=False), i))
+
+
+def save_sender_groups(groups: list[dict]) -> None:
+    """Replace all sender groups."""
+    _validate_names(groups, "Absender-Gruppen")
+    with _conn() as conn:
+        conn.execute("DELETE FROM sender_groups")
+        for g in groups:
+            name = " ".join(str(g["name"]).split())
+            variants = [v for v in _clean_list(g.get("variants")) if v.lower() != name.lower()]
+            conn.execute(
+                "INSERT INTO sender_groups(name, variants, search_terms, document_type, note) VALUES (?, ?, ?, ?, ?)",
+                (name, json.dumps(variants, ensure_ascii=False),
+                 json.dumps(_clean_list(g.get("search_terms")), ensure_ascii=False),
+                 (g.get("document_type") or None), (str(g.get("note") or "").strip() or None)),
+            )
+
+
+def import_settings_yaml(text: str) -> dict:
+    """Merge persons/groups from pasted YAML into the settings; returns counts."""
+    import yaml
+    cfg = yaml.safe_load(text) or {}
+    if not isinstance(cfg, dict):
+        raise ValueError("YAML muss ein Objekt mit Schlüsseln wie 'senders' oder 'persons' sein")
+    persons, groups = parse_settings_yaml(cfg)
+    if not persons and not groups:
+        raise ValueError("Keine Personen oder Absender gefunden (erwartet z. B. 'senders', 'recipients', 'persons', 'nl_hints')")
+    with _conn() as conn:
+        return _merge_settings(conn, persons, groups)
+
+
+def sender_name_counts() -> list[tuple[str, int]]:
+    """Distinct sender names in the archive (sender, else company) with document counts."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT COALESCE(NULLIF(sender,''), NULLIF(company,'')) AS n, COUNT(*) FROM documents "
+            "WHERE n IS NOT NULL GROUP BY n ORDER BY 2 DESC"
+        ).fetchall()
+    return [(r[0], r[1]) for r in rows]

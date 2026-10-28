@@ -362,6 +362,89 @@ def nl_search():
     return jsonify({"answer": answer, "documents": linked_docs, "chat_id": chat_id})
 
 
+# ---------------------------------------------------------------------------
+# Einstellungen: persons and sender groups
+# ---------------------------------------------------------------------------
+
+@app.route("/einstellungen")
+def settings_page():
+    return render_template("einstellungen.html", type_labels=TYPE_LABELS)
+
+
+def _settings_payload() -> dict:
+    persons = db_module.get_persons()
+    groups = db_module.get_sender_groups()
+    # Which archive sender names does each group cover, and which are not covered at all?
+    hits: dict[str, int] = {}
+    unassigned = []
+    for name, count in db_module.sender_name_counts():
+        low = name.lower()
+        matched = False
+        for g in groups:
+            if any(t.lower() in low for t in [g["name"], *g["variants"]]):
+                hits[g["name"]] = hits.get(g["name"], 0) + count
+                matched = True
+        if not matched:
+            unassigned.append({"name": name, "count": count})
+    for g in groups:
+        g["document_count"] = hits.get(g["name"], 0)
+    return {
+        "persons": persons,
+        "sender_groups": groups,
+        "unassigned_senders": unassigned[:200],
+        "document_types": TYPE_LABELS,
+    }
+
+
+@app.route("/api/settings")
+def settings_get():
+    return jsonify(_settings_payload())
+
+
+@app.route("/api/settings/persons", methods=["POST"])
+def settings_save_persons():
+    data = request.get_json() or {}
+    try:
+        db_module.save_persons(list(data.get("persons") or []))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(_settings_payload())
+
+
+@app.route("/api/settings/sender-groups", methods=["POST"])
+def settings_save_groups():
+    data = request.get_json() or {}
+    try:
+        db_module.save_sender_groups(list(data.get("sender_groups") or []))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(_settings_payload())
+
+
+@app.route("/api/settings/import", methods=["POST"])
+def settings_import():
+    data = request.get_json() or {}
+    try:
+        stats = db_module.import_settings_yaml(str(data.get("yaml") or ""))
+    except Exception as e:  # YAML syntax errors included
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"imported": stats, **_settings_payload()})
+
+
+@app.route("/api/settings/export")
+def settings_export():
+    """Persons and sender groups as YAML (same format the import accepts)."""
+    def strip(item: dict, keys: tuple[str, ...]) -> dict:
+        return {k: item[k] for k in keys if item.get(k)}
+    doc = {
+        "persons": [strip(p, ("name", "variants")) for p in db_module.get_persons()],
+        "sender_groups": [strip(g, ("name", "variants", "search_terms", "document_type", "note"))
+                          for g in db_module.get_sender_groups()],
+    }
+    text = yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=120)
+    return Response(text, mimetype="text/yaml; charset=utf-8")
+
+
 @app.route("/api/ki/chats")
 def ki_chats():
     return jsonify({"chats": db_module.ki_list_chats()})
