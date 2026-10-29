@@ -478,7 +478,9 @@ document.querySelectorAll('.meta-save-btn').forEach(btn => {
       const display = document.getElementById(`display-${field}`);
       display.textContent = value || '–';
       closeMeta(field);
-      showToast(true, 'Gespeichert.');
+      if (data.warning) showToast(false, data.warning);
+      else if (data.moved_to) showToast(true, `Gespeichert, Datei verschoben nach ${data.moved_to}.`);
+      else showToast(true, 'Gespeichert.');
     } catch(e) {
       showToast(false, `Fehler: ${e.message}`);
     } finally {

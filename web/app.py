@@ -199,10 +199,43 @@ def _full_onedrive_path(onedrive_path: str) -> str:
     path from the drive root (e.g. 'Scanbot/Ablage/Versicherung/2016/file.pdf').
     Prepend OUTPUT_BASE_FOLDER when it is missing.
     """
+    onedrive_path = onedrive_path.lstrip("/")
     archive_root = os.getenv("OUTPUT_BASE_FOLDER", "").strip("/\\")
     if archive_root and not onedrive_path.startswith(archive_root + "/"):
         return f"{archive_root}/{onedrive_path}"
     return onedrive_path
+
+
+def _move_to_destination(graph, classifier, doc: dict, item: dict, document_type: str, date: str | None) -> dict:
+    """
+    Move the OneDrive file `item` to the folder the classifier picks for (type, date).
+
+    Returns folder, destination_folder (relative to the archive root), onedrive_path,
+    matched_rule and moved (False when the file already lies in the right folder).
+    """
+    metadata = {
+        "document_type": document_type,
+        "date": date,
+        "company": doc.get("company"),
+        "keywords": [k.strip() for k in (doc.get("keywords") or "").split(",") if k.strip()],
+    }
+    folder, year, matched_rule = classifier.build_destination_path(metadata)
+    archive_root = os.getenv("OUTPUT_BASE_FOLDER", "").strip("/\\")
+    rel_path = f"{folder}/{year}" if year else folder
+    full_path = "/".join(filter(None, [archive_root, rel_path]))
+    current_name = item["name"]
+    current_full = _full_onedrive_path(doc["onedrive_path"])
+    current_parent = current_full.rsplit("/", 1)[0] if "/" in current_full else ""
+
+    if current_parent == full_path:
+        return {"destination_folder": rel_path, "onedrive_path": current_full,
+                "matched_rule": matched_rule, "moved": False}
+
+    dest_parent_id = graph.ensure_folder_path(full_path)
+    result = graph.move_and_rename(item["id"], current_name, dest_parent_id)
+    final_name = result.get("name", current_name)
+    return {"destination_folder": rel_path, "onedrive_path": f"{full_path}/{final_name}",
+            "matched_rule": matched_rule, "moved": True}
 
 
 # ---------------------------------------------------------------------------
@@ -629,30 +662,14 @@ def reclassify(doc_id: int):
 
     try:
         item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
-        item_id = item["id"]
-        current_filename = item["name"]
-
-        metadata = {
-            "document_type": new_type,
-            "date": doc.get("document_date"),
-            "company": doc.get("company"),
-            "keywords": [k.strip() for k in (doc.get("keywords") or "").split(",") if k.strip()],
-        }
-        folder, year, matched_rule = classifier.build_destination_path(metadata)
-        archive_root = os.getenv("OUTPUT_BASE_FOLDER", "").strip("/\\")
-        rel_path = f"{folder}/{year}" if year else folder
-        full_path = "/".join(filter(None, [archive_root, rel_path]))
-
-        dest_parent_id = graph.ensure_folder_path(full_path)
-        result = graph.move_and_rename(item_id, current_filename, dest_parent_id)
-        final_name = result.get("name", current_filename)
-        new_onedrive_path = f"{full_path}/{final_name}"
+        moved = _move_to_destination(graph, classifier, doc, item, new_type, doc.get("document_date"))
+        rel_path, matched_rule = moved["destination_folder"], moved["matched_rule"]
 
         db_module.update_document(
             doc_id,
             document_type=new_type,
             destination_folder=rel_path,
-            onedrive_path=new_onedrive_path,
+            onedrive_path=moved["onedrive_path"],
             matched_rule=matched_rule,
         )
 
@@ -719,10 +736,35 @@ def update_metadata(doc_id: int):
     updates = {k: (data.get(k) or "").strip() or None for k in allowed if k in data}
     if not updates:
         return jsonify({"error": "No valid fields provided"}), 400
-    if db_module.get_document(doc_id) is None:
+    doc = db_module.get_document(doc_id)
+    if doc is None:
         return jsonify({"error": "not found"}), 404
     db_module.update_document(doc_id, **updates)
-    return jsonify(updates)
+
+    # A new date can mean a different year folder: move the file along with it.
+    result: dict = dict(updates)
+    new_date = updates.get("document_date")
+    if new_date and new_date != doc.get("document_date") and doc.get("onedrive_path"):
+        graph, classifier = _get_graph(), _get_classifier()
+        if graph is None or classifier is None:
+            result["warning"] = "Datum gespeichert, Datei nicht verschoben (OneDrive nicht konfiguriert)."
+        else:
+            try:
+                item = graph.get_item_by_path(_full_onedrive_path(doc["onedrive_path"]))
+                moved = _move_to_destination(graph, classifier, doc, item,
+                                             doc.get("document_type") or "", new_date)
+                if moved["moved"]:
+                    db_module.update_document(
+                        doc_id,
+                        destination_folder=moved["destination_folder"],
+                        onedrive_path=moved["onedrive_path"],
+                        matched_rule=moved["matched_rule"],
+                    )
+                    result["moved_to"] = moved["destination_folder"]
+            except Exception as e:
+                app.logger.error(f"Move after date change {doc_id}: {e}")
+                result["warning"] = f"Datum gespeichert, Datei aber nicht verschoben: {e}"
+    return jsonify(result)
 
 
 @app.route("/duplicates")
